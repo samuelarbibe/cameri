@@ -1,0 +1,24 @@
+{
+  "name": "@cameri/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Run aggregation, flake detection and failure clustering",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/*.test.ts",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@cameri/contract": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  }
+}

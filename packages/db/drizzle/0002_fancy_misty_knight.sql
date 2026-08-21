@@ -1,0 +1,1 @@
+ALTER TYPE "public"."test_status" ADD VALUE 'running' BEFORE 'passed';

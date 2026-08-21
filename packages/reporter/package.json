@@ -1,0 +1,45 @@
+{
+  "name": "@cameri/playwright-reporter",
+  "version": "0.0.0",
+  "description": "Playwright reporter that streams results to a Cameri server",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "playwright",
+    "reporter",
+    "testing",
+    "ci"
+  ],
+  "devDependencies": {
+    "@cameri/contract": "workspace:*",
+    "@playwright/test": "^1.62.1"
+  }
+}

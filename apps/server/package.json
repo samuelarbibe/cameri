@@ -1,0 +1,42 @@
+{
+  "name": "@cameri/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cameri ingest API, tRPC app API and static web host",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./router": {
+      "types": "./src/trpc/router.ts",
+      "default": "./src/trpc/router.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@cameri/contract": "workspace:*",
+    "@cameri/core": "workspace:*",
+    "@cameri/db": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "@trpc/server": "^11.18.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.3",
+    "pg": "^8.23.0",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=20.10"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}

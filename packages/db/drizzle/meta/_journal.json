@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787317894842,
+      "tag": "0000_steep_starbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787322761225,
+      "tag": "0001_first_mandrill",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787324458686,
+      "tag": "0002_fancy_misty_knight",
+      "breakpoints": true
+    }
+  ]
+}

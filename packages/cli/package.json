@@ -1,0 +1,42 @@
+{
+  "name": "cameri",
+  "version": "0.0.0",
+  "description": "CLI for Cameri — orchestrates sharded Playwright runs",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "cameri": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "playwright",
+    "testing",
+    "ci",
+    "cameri"
+  ],
+  "dependencies": {
+    "@cameri/contract": "workspace:*",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  }
+}
