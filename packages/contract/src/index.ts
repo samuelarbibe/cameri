@@ -47,6 +47,38 @@ export const ciContextSchema = z.object({
 export type CiContext = z.infer<typeof ciContextSchema>;
 
 /**
+ * Where to post a status comment, when the build is a merge/pull request.
+ *
+ * Coordinates only — never a credential. The reporter runs on someone else's CI
+ * and says *which* merge request this run belongs to; the server holds the token
+ * and does the posting, because it is the only party that knows what the other
+ * shards are doing.
+ */
+export const mergeRequestContextSchema = z.object({
+  /** `gitlab` today. Absent means "this build is not a merge request". */
+  provider: z.string().nullish(),
+  /** Numeric id or url-encoded path — whichever the provider's API accepts. */
+  projectId: z.string().nullish(),
+  /** GitLab's `iid`; the number humans see, scoped to the project. */
+  iid: z.string().nullish(),
+  /**
+   * The merge request's own title, as CI reported it.
+   *
+   * Carried on the run rather than fetched, so the merge request list reads
+   * correctly on a deployment with no GitLab token configured at all. It is a
+   * snapshot: retitling the merge request does not rewrite past runs, which is
+   * the honest thing for a record of what the pipeline saw.
+   */
+  title: z.string().nullish(),
+  /** What the merge request is being merged *into* — `main`, usually. */
+  targetBranch: z.string().nullish(),
+  /** Instance root, so a self-hosted GitLab is reachable. */
+  serverUrl: z.string().nullish(),
+  webUrl: z.string().nullish(),
+});
+export type MergeRequestContext = z.infer<typeof mergeRequestContextSchema>;
+
+/**
  * Opens (or joins) a run. Every shard calls this; the first one through creates
  * the run row and the rest attach to it via `runKey`, which is why the server
  * has to treat this as an upsert rather than an insert.
@@ -60,6 +92,7 @@ export const createRunRequestSchema = z.object({
   playwrightVersion: z.string().nullish(),
   git: gitContextSchema.default({}),
   ci: ciContextSchema.default({ attempt: 1 }),
+  mr: mergeRequestContextSchema.default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
@@ -112,6 +145,29 @@ export const annotationSchema = z.object({
 });
 export type Annotation = z.infer<typeof annotationSchema>;
 
+/**
+ * One entry from Playwright's step tree.
+ *
+ * Flattened with a `depth` rather than sent as a nested tree: the UI re-indents
+ * from the number, the JSON stays a plain array whatever the nesting, and a
+ * deeply chained `test.step` cannot produce a payload that is expensive to parse.
+ *
+ * Steps are what turn a log view into a trace — "what was it doing when it hung"
+ * is answered by the last step that started and never finished, which stdout
+ * alone will not tell you.
+ */
+export const testStepSchema = z.object({
+  title: z.string(),
+  /** Playwright's own bucket: `test.step`, `expect`, `pw:api`, `hook`, `fixture`. */
+  category: z.string(),
+  depth: z.number().int().nonnegative().default(0),
+  startedAt: z.iso.datetime(),
+  durationMs: z.number().nonnegative().default(0),
+  /** First line of the step's error, when it has one. Full text stays on the attempt. */
+  error: z.string().nullish(),
+});
+export type TestStep = z.infer<typeof testStepSchema>;
+
 /** One attempt at one test. A retried test produces several of these. */
 export const testAttemptSchema = z.object({
   /** Playwright's stable test id — the identity we join on across runs. */
@@ -140,6 +196,7 @@ export const testAttemptSchema = z.object({
   tags: z.array(z.string()).default([]),
   stdout: z.string().nullish(),
   stderr: z.string().nullish(),
+  steps: z.array(testStepSchema).default([]),
   attachments: z.array(attachmentSchema).default([]),
 });
 export type TestAttempt = z.infer<typeof testAttemptSchema>;

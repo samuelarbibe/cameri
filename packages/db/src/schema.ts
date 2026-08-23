@@ -4,6 +4,7 @@ import {
   SHARD_STATUSES,
   TEST_STATUSES,
   type RunStats,
+  type TestStep,
 } from "@cameri/contract";
 import { relations, sql } from "drizzle-orm";
 import {
@@ -24,6 +25,7 @@ export const testStatusEnum = pgEnum("test_status", [...TEST_STATUSES]);
 export const runStatusEnum = pgEnum("run_status", [...RUN_STATUSES]);
 export const shardStatusEnum = pgEnum("shard_status", [...SHARD_STATUSES]);
 export const attachmentKindEnum = pgEnum("attachment_kind", [...ATTACHMENT_KINDS]);
+export const integrationProviderEnum = pgEnum("integration_provider", ["gitlab"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -52,6 +54,38 @@ export const recordKeys = pgTable(
     createdAt,
   },
   (t) => [index("record_keys_project_idx").on(t.projectId)],
+);
+
+/**
+ * Outbound credentials, one row per (project, provider).
+ *
+ * The token is stored encrypted rather than hashed, because unlike a record key
+ * the server has to *use* it — it authenticates cameri to GitLab. That is a real
+ * difference in exposure and it is why `tokenHint` exists: the UI can show
+ * `glpat-…a1b2` to confirm which token is configured without ever decrypting.
+ */
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    provider: integrationProviderEnum("provider").notNull(),
+    /** Instance root, so self-hosted GitLab works. Falls back to the run's own. */
+    baseUrl: text("base_url"),
+    /** AES-256-GCM, keyed by CAMERI_ENCRYPTION_KEY. Never leaves the server. */
+    tokenCipher: text("token_cipher").notNull(),
+    /** Last few characters of the plaintext, for recognition only. */
+    tokenHint: text("token_hint").notNull().default(""),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Why the last sync failed, surfaced in settings so it is not silent. */
+    lastError: text("last_error"),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("integrations_project_provider_idx").on(t.projectId, t.provider)],
 );
 
 /**
@@ -85,6 +119,36 @@ export const runs = pgTable(
     ciJobName: text("ci_job_name"),
     ciAttempt: integer("ci_attempt").notNull().default(1),
 
+    /**
+     * The merge request this build belongs to, when it is one, plus the id of
+     * the note cameri keeps updated on it.
+     *
+     * `mrNoteId` is the whole reason these live on the run rather than being
+     * re-derived: it is the difference between one comment that evolves as the
+     * suite progresses and a fresh comment on every batch of results.
+     */
+    mrProvider: text("mr_provider"),
+    mrProjectId: text("mr_project_id"),
+    mrIid: text("mr_iid"),
+    /**
+     * Title and target branch as CI reported them at the time of the run.
+     *
+     * Snapshots, deliberately: the merge request list has to read correctly on a
+     * deployment that has never been given a GitLab token, and a retitled merge
+     * request should not rewrite what past pipelines saw.
+     */
+    mrTitle: text("mr_title"),
+    mrTargetBranch: text("mr_target_branch"),
+    /**
+     * Instance root as CI reported it. Kept rather than derived from `mrUrl`,
+     * because a GitLab served under a subpath has an API root that no amount of
+     * parsing the merge request URL will recover.
+     */
+    mrServerUrl: text("mr_server_url"),
+    mrUrl: text("mr_url"),
+    mrNoteId: text("mr_note_id"),
+    mrSyncedAt: timestamp("mr_synced_at", { withTimezone: true }),
+
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -97,6 +161,11 @@ export const runs = pgTable(
     uniqueIndex("runs_project_run_key_idx").on(t.projectId, t.runKey),
     index("runs_project_created_idx").on(t.projectId, t.createdAt.desc()),
     index("runs_branch_idx").on(t.projectId, t.branch),
+    // Partial: most rows on a typical project are branch pipelines with no merge
+    // request at all, and neither the list nor the filter ever wants those.
+    index("runs_mr_idx")
+      .on(t.projectId, t.mrIid, t.createdAt.desc())
+      .where(sql`${t.mrIid} is not null`),
     index("runs_incomplete_idx")
       .on(t.staleAt)
       .where(sql`${t.completedAt} is null`),
@@ -193,6 +262,8 @@ export const testAttempts = pgTable(
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     stdout: text("stdout"),
     stderr: text("stderr"),
+    /** Flattened step tree; see `testStepSchema` for why it is not nested. */
+    steps: jsonb("steps").$type<TestStep[]>().notNull().default([]),
 
     /** Set once the whole retry chain for this test in this run is known. */
     isFlaky: boolean("is_flaky").notNull().default(false),
@@ -230,6 +301,11 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   runs: many(runs),
   tests: many(tests),
   recordKeys: many(recordKeys),
+  integrations: many(integrations),
+}));
+
+export const integrationsRelations = relations(integrations, ({ one }) => ({
+  project: one(projects, { fields: [integrations.projectId], references: [projects.id] }),
 }));
 
 export const runsRelations = relations(runs, ({ one, many }) => ({
@@ -268,3 +344,4 @@ export type Shard = typeof shards.$inferSelect;
 export type Test = typeof tests.$inferSelect;
 export type TestAttemptRow = typeof testAttempts.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
+export type IntegrationRow = typeof integrations.$inferSelect;

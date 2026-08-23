@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatDuration } from "@/lib/dates";
-import type { FileGroup, TestGroup } from "@/lib/run-stats";
+import { suitePath, type FileGroup, type TestGroup } from "@/lib/run-stats";
 import { OUTCOME_BADGE, OUTCOME_FILL, OUTCOME_LABEL } from "@/lib/status-colors";
 
 /**
@@ -129,9 +129,7 @@ function TestRow({
   onSelect: (test: TestGroup) => void;
   selected: boolean;
 }) {
-  // `titlePath` is Playwright's full describe chain including the file and the
-  // test itself; the middle slice is the describe blocks the test sits under.
-  const suite = test.titlePath.slice(1, -1).join(" › ");
+  const suite = suitePath(test);
 
   return (
     <button

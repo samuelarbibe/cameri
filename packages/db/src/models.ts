@@ -19,6 +19,7 @@
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import {
   attachments,
+  integrations,
   projects,
   recordKeys,
   runs,
@@ -33,6 +34,7 @@ export const shardSelectSchema = createSelectSchema(shards);
 export const testSelectSchema = createSelectSchema(tests);
 export const testAttemptSelectSchema = createSelectSchema(testAttempts);
 export const attachmentSelectSchema = createSelectSchema(attachments);
+export const integrationSelectSchema = createSelectSchema(integrations);
 
 export const projectInsertSchema = createInsertSchema(projects);
 export const runInsertSchema = createInsertSchema(runs);
@@ -48,6 +50,7 @@ export type ShardModel = typeof shards.$inferSelect;
 export type TestModel = typeof tests.$inferSelect;
 export type TestAttemptModel = typeof testAttempts.$inferSelect;
 export type AttachmentModel = typeof attachments.$inferSelect;
+export type IntegrationModel = typeof integrations.$inferSelect;
 
 export type NewProject = typeof projects.$inferInsert;
 export type NewRun = typeof runs.$inferInsert;
@@ -56,6 +59,7 @@ export type NewTest = typeof tests.$inferInsert;
 export type NewTestAttempt = typeof testAttempts.$inferInsert;
 export type NewAttachment = typeof attachments.$inferInsert;
 export type NewRecordKey = typeof recordKeys.$inferInsert;
+export type NewIntegration = typeof integrations.$inferInsert;
 
 /** Run plus the derived fields the run list needs, without a second round trip. */
 export interface RunSummary extends RunModel {

@@ -1,8 +1,12 @@
 import { BrowserRouter, Route, Routes } from "react-router";
+import { MergeRequestRoute } from "@/routes/mr-route";
+import { MergeRequestsRoute } from "@/routes/mrs-route";
 import { ProjectRedirect } from "@/routes/project-redirect";
 import { RunRoute } from "@/routes/run-route";
 import { RunsRoute } from "@/routes/runs-route";
+import { SettingsRoute } from "@/routes/settings-route";
 import { ShellLayout } from "@/routes/shell-layout";
+import { TestsRoute } from "@/routes/tests-route";
 
 /**
  * The project is a path segment, not a query param: it identifies *what* you
@@ -25,6 +29,12 @@ export function App() {
           <Route index element={<RunsRoute />} />
           <Route path="runs" element={<RunsRoute />} />
           <Route path="runs/:runId" element={<RunRoute />} />
+          {/* `mrs`, not `merge-requests`: it is typed into the address bar and
+              read in pasted links more often than it is read as prose. */}
+          <Route path="mrs" element={<MergeRequestsRoute />} />
+          <Route path="mrs/:mrIid" element={<MergeRequestRoute />} />
+          <Route path="tests" element={<TestsRoute />} />
+          <Route path="settings" element={<SettingsRoute />} />
         </Route>
       </Routes>
     </BrowserRouter>

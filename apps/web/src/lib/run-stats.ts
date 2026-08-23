@@ -83,6 +83,21 @@ export function groupByTest(attempts: RunAttempt[]): TestGroup[] {
   });
 }
 
+/**
+ * The `describe` blocks a test sits under, and nothing else.
+ *
+ * Playwright's `titlePath` is the whole chain — root, project, file, describes,
+ * title — and the first three are already on screen as their own fields. Slicing
+ * blindly reprints them, so this anchors on the file and takes what follows.
+ */
+export function suitePath(test: { titlePath: string[]; file: string }): string {
+  const fileAt = test.titlePath.lastIndexOf(test.file);
+  // No file in the chain (a hand-written payload, or a future Playwright): fall
+  // back to dropping the leading root/project pair rather than showing nothing.
+  const start = fileAt === -1 ? 2 : fileAt + 1;
+  return test.titlePath.slice(start, -1).join(" › ");
+}
+
 export function countOutcomes(tests: TestGroup[]): OutcomeCounts {
   const counts: OutcomeCounts = {
     total: tests.length,

@@ -22,6 +22,20 @@
       "when": 1787324458686,
       "tag": "0002_fancy_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787410097328,
+      "tag": "0003_deep_doomsday",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787411818820,
+      "tag": "0004_wild_landau",
+      "breakpoints": true
     }
   ]
 }

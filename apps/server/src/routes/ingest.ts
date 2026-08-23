@@ -19,7 +19,7 @@ import {
   type NewAttachment,
   type NewTestAttempt,
 } from "@cameri/db";
-import { and, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { recordKeyAuth } from "../auth.ts";
@@ -74,6 +74,13 @@ export function ingestRoutes(app: AppContext) {
         ciBuildUrl: body.ci.buildUrl ?? null,
         ciJobName: body.ci.jobName ?? null,
         ciAttempt: body.ci.attempt,
+        mrProvider: body.mr.provider ?? null,
+        mrProjectId: body.mr.projectId ?? null,
+        mrIid: body.mr.iid ?? null,
+        mrTitle: body.mr.title ?? null,
+        mrTargetBranch: body.mr.targetBranch ?? null,
+        mrServerUrl: body.mr.serverUrl ?? null,
+        mrUrl: body.mr.webUrl ?? null,
         metadata: body.metadata,
         staleAt,
       })
@@ -84,6 +91,17 @@ export function ingestRoutes(app: AppContext) {
         set: {
           expectedShards: sql`greatest(${runs.expectedShards}, excluded.expected_shards)`,
           staleAt,
+          // Every shard of a merge request pipeline reports the same
+          // coordinates, so any of them will do — but a shard from an older
+          // reporter sends nulls, and those must not erase what a newer one
+          // already established.
+          mrProvider: sql`coalesce(excluded.mr_provider, ${runs.mrProvider})`,
+          mrProjectId: sql`coalesce(excluded.mr_project_id, ${runs.mrProjectId})`,
+          mrIid: sql`coalesce(excluded.mr_iid, ${runs.mrIid})`,
+          mrTitle: sql`coalesce(excluded.mr_title, ${runs.mrTitle})`,
+          mrTargetBranch: sql`coalesce(excluded.mr_target_branch, ${runs.mrTargetBranch})`,
+          mrServerUrl: sql`coalesce(excluded.mr_server_url, ${runs.mrServerUrl})`,
+          mrUrl: sql`coalesce(excluded.mr_url, ${runs.mrUrl})`,
         },
       })
       // `xmax = 0` is true only for a freshly inserted row, which is the
@@ -102,6 +120,10 @@ export function ingestRoutes(app: AppContext) {
       .returning();
 
     if (!shard) throw new HTTPException(500, { message: "could not open shard" });
+
+    // Posts the "running" comment as soon as the first shard opens the run, so
+    // a reviewer sees that tests started rather than nothing until they finish.
+    app.mrComments.schedule(run.id);
 
     const response: CreateRunResponse = {
       runId: run.id,
@@ -164,6 +186,7 @@ export function ingestRoutes(app: AppContext) {
           tags: attempt.tags,
           stdout: attempt.stdout ?? null,
           stderr: attempt.stderr ?? null,
+          steps: attempt.steps,
         };
 
         const [inserted] = await tx
@@ -223,6 +246,10 @@ export function ingestRoutes(app: AppContext) {
         .where(eq(shards.id, body.shardId));
     });
 
+    // Rate-limited inside the sync, so a chatty shard cannot turn every batch
+    // into a GitLab request.
+    app.mrComments.schedule(body.runId);
+
     const response: ReportResultsResponse = { accepted: body.results.length, uploads };
     return c.json(response);
   });
@@ -278,6 +305,10 @@ export function ingestRoutes(app: AppContext) {
       } satisfies CompleteShardResponse;
     });
 
+    // `final` on the last shard: the verdict is worth an immediate edit, and
+    // there is nothing after it to coalesce with.
+    app.mrComments.schedule(body.runId, { final: result.runComplete });
+
     return c.json(result);
   });
 
@@ -288,10 +319,7 @@ export function ingestRoutes(app: AppContext) {
   router.put("/blobs/*", async (c) => {
     if (!storage.write) throw new HTTPException(404, { message: "no local blob sink" });
 
-    const key = decodeURI(c.req.path.replace(/^\/api\/v1\/blobs\//, ""));
-    if (!key || key.includes("..")) {
-      throw new HTTPException(400, { message: "bad blob key" });
-    }
+    const key = blobKey(c.req.path);
     if (!c.req.raw.body) throw new HTTPException(400, { message: "empty body" });
 
     await storage.write(key, Readable.fromWeb(c.req.raw.body as never));
@@ -305,7 +333,98 @@ export function ingestRoutes(app: AppContext) {
     return c.json({ ok: true, key, size });
   });
 
+  /**
+   * Serves attachment bytes back, for downloads and for the Playwright trace
+   * viewer.
+   *
+   * The viewer at `trace.playwright.dev` is a static site that fetches the trace
+   * in the browser, from Playwright's origin — so this has to answer a
+   * cross-origin GET, preflight included, or the viewer shows nothing but a
+   * network error. `*` is the right value here and not a shortcut: the response
+   * carries no credentials and the endpoint is already unauthenticated, so
+   * naming an origin would restrict nobody while breaking every other viewer.
+   */
+  router.on(["GET", "HEAD", "OPTIONS"], "/blobs/*", async (c) => {
+    c.header("access-control-allow-origin", "*");
+    c.header("access-control-allow-headers", "range, content-type");
+    c.header("access-control-expose-headers", "content-length, content-range");
+
+    if (c.req.method === "OPTIONS") return c.body(null, 204);
+    if (!storage.read) throw new HTTPException(404, { message: "no local blob source" });
+
+    const key = blobKey(c.req.path);
+    const [row] = await db
+      .select({ name: attachments.name, contentType: attachments.contentType })
+      .from(attachments)
+      .where(and(eq(attachments.storageKey, key), isNotNull(attachments.uploadedAt)))
+      .limit(1);
+
+    if (!row) throw new HTTPException(404, { message: "unknown blob" });
+
+    const size = (await storage.size?.(key)) ?? 0;
+    c.header("content-type", row.contentType);
+    c.header("content-length", String(size));
+    // Traces are content-addressed by run and attempt id, so they never change
+    // under a key. Long cache, and the viewer stops refetching on every reload.
+    c.header("cache-control", "public, max-age=31536000, immutable");
+    // `inline` would let a stored .html attachment run script on this origin.
+    c.header("content-disposition", `attachment; filename="${row.name.replace(/["\\]/g, "")}"`);
+
+    if (c.req.method === "HEAD") return c.body(null, 200);
+    return c.body(Readable.toWeb(await storage.read(key)) as ReadableStream);
+  });
+
+  /**
+   * Stable URL for "the trace of this attempt", redirecting to the bytes.
+   *
+   * The indirection buys two things. The run payload can say *whether* an
+   * attempt has a trace without carrying a URL for every attempt in the run,
+   * and the link keeps working: on the s3 driver `downloadUrl` presigns, so a
+   * viewer link built from it would be dead within the hour — including the
+   * ones people paste into a merge request.
+   */
+  router.on(["GET", "OPTIONS"], "/attempts/:attemptId/trace", async (c) => {
+    // Same reasoning as `/blobs/*`: the viewer fetches this from Playwright's
+    // origin, and every hop of a redirect chain has to pass the CORS check.
+    c.header("access-control-allow-origin", "*");
+    if (c.req.method === "OPTIONS") return c.body(null, 204);
+
+    const attemptId = c.req.param("attemptId");
+    // Postgres raises on a malformed uuid, which would surface as a 500.
+    if (!UUID.test(attemptId)) throw new HTTPException(400, { message: "bad attempt id" });
+
+    const [row] = await db
+      .select({ storageKey: attachments.storageKey })
+      .from(attachments)
+      .where(
+        and(
+          eq(attachments.attemptId, attemptId),
+          eq(attachments.kind, "trace"),
+          isNotNull(attachments.uploadedAt),
+        ),
+      )
+      // Playwright writes one trace per attempt, but a fixture can attach more.
+      // Newest wins, which is the one that saw the failure.
+      .orderBy(desc(attachments.createdAt))
+      .limit(1);
+
+    if (!row) throw new HTTPException(404, { message: "no trace for this attempt" });
+
+    // Found, but somewhere else now — `cache-control` is deliberately absent so
+    // a moved blob is not pinned in a proxy.
+    return c.redirect(await storage.downloadUrl(row.storageKey), 302);
+  });
+
   return router;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Extracts and validates the storage key out of a `/blobs/...` request path. */
+function blobKey(path: string): string {
+  const key = decodeURI(path.replace(/^\/api\/v1\/blobs\//, ""));
+  if (!key || key.includes("..")) throw new HTTPException(400, { message: "bad blob key" });
+  return key;
 }
 
 /**

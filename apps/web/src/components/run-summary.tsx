@@ -1,4 +1,6 @@
 import { ExternalLinkIcon, GitBranchIcon, GitCommitHorizontalIcon, UserIcon } from "lucide-react";
+import { useParams } from "react-router";
+import { MergeRequestLink } from "@/components/merge-request-link";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +25,7 @@ const BREAKDOWN: TestOutcome[] = ["failed", "flaky", "passed", "skipped", "runni
 
 export function RunSummary({ detail, counts, window }: RunSummaryProps) {
   const { run } = detail;
+  const { projectSlug } = useParams();
   const completedShards = detail.shards.filter((shard) => shard.completedAt !== null).length;
   const wallClock = window.end - window.start;
   const testTime = detail.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
@@ -41,17 +44,36 @@ export function RunSummary({ detail, counts, window }: RunSummaryProps) {
             {run.commitMessage ?? "No commit message"}
           </p>
         </div>
-        {run.ciBuildUrl ? (
-          <Button variant="outline" size="sm" className="ml-auto" asChild>
-            <a href={run.ciBuildUrl} target="_blank" rel="noreferrer">
-              <ExternalLinkIcon className="size-4" />
-              CI build
-            </a>
-          </Button>
-        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          {run.mrUrl ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={run.mrUrl} target="_blank" rel="noreferrer">
+                <ExternalLinkIcon className="size-4" />
+                Merge request
+              </a>
+            </Button>
+          ) : null}
+          {run.ciBuildUrl ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={run.ciBuildUrl} target="_blank" rel="noreferrer">
+                <ExternalLinkIcon className="size-4" />
+                CI build
+              </a>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        {/* First in the row: on a merge request pipeline it is the thing that
+            says what this run was for, and the branch is a detail of it. */}
+        <MergeRequestLink
+          iid={run.mrIid}
+          url={run.mrUrl}
+          title={run.mrTitle}
+          projectSlug={projectSlug}
+          className="text-sm"
+        />
         <Meta icon={GitBranchIcon} value={run.branch} />
         <Meta icon={GitCommitHorizontalIcon} value={run.commitSha?.slice(0, 8)} mono />
         <Meta icon={UserIcon} value={run.author} />

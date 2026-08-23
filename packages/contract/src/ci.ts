@@ -1,4 +1,4 @@
-import type { CiContext, GitContext } from "./index.ts";
+import type { CiContext, GitContext, MergeRequestContext } from "./index.ts";
 
 type Env = NodeJS.ProcessEnv;
 
@@ -108,6 +108,50 @@ export function detectGitContext(env: Env = process.env): GitContext {
     commitMessage: null,
     author: null,
     remoteUrl: null,
+  };
+}
+
+const NO_MERGE_REQUEST: MergeRequestContext = {
+  provider: null,
+  projectId: null,
+  iid: null,
+  title: null,
+  targetBranch: null,
+  serverUrl: null,
+  webUrl: null,
+};
+
+/**
+ * Identifies the merge request a build belongs to, if any.
+ *
+ * GitLab only for now — it is the one provider the server can post a status
+ * comment to. Everywhere else this returns nulls, and the server simply has
+ * nothing to comment on.
+ *
+ * Note `CI_MERGE_REQUEST_IID` is only set on `merge_request_event` pipelines. A
+ * branch pipeline for a branch that happens to have an MR open does not get it,
+ * and that is the right behaviour: cameri comments on the pipeline it was told
+ * about rather than guessing.
+ */
+export function detectMergeRequest(env: Env = process.env): MergeRequestContext {
+  if (!env.GITLAB_CI || !env.CI_MERGE_REQUEST_IID) return NO_MERGE_REQUEST;
+
+  // The *target* project, not `CI_PROJECT_ID`. On a fork pipeline those differ,
+  // and the note belongs on the repository the MR was opened against.
+  const projectId = env.CI_MERGE_REQUEST_PROJECT_ID ?? env.CI_PROJECT_ID ?? null;
+  const projectUrl = env.CI_MERGE_REQUEST_PROJECT_URL ?? env.CI_PROJECT_URL;
+
+  return {
+    provider: "gitlab",
+    projectId,
+    iid: env.CI_MERGE_REQUEST_IID,
+    // Both are set on `merge_request_event` pipelines alongside the iid. Reading
+    // them here rather than calling the API means the merge request list works
+    // on a deployment that has never configured a token.
+    title: env.CI_MERGE_REQUEST_TITLE ?? null,
+    targetBranch: env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME ?? null,
+    serverUrl: env.CI_SERVER_URL ?? null,
+    webUrl: projectUrl ? `${projectUrl}/-/merge_requests/${env.CI_MERGE_REQUEST_IID}` : null,
   };
 }
 

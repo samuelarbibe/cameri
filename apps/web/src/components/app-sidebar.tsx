@@ -1,16 +1,31 @@
-import { ActivityIcon } from "lucide-react";
+import {
+  ActivityIcon,
+  CheckIcon,
+  ChevronsUpDownIcon,
+  FlaskConicalIcon,
+  GitPullRequestArrowIcon,
+  ListChecksIcon,
+  SettingsIcon,
+} from "lucide-react";
 import type * as React from "react";
+import { Link, useLocation } from "react-router";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -25,10 +40,20 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 };
 
 /**
- * The `sidebar-04` block, with its docs-nav sample data replaced by the real
- * project list. The block's two-level shape maps onto the data as-is: a section
- * heading per area, projects as the sub-items under it.
+ * Views down the side, project at the bottom.
+ *
+ * The project is not navigation — it is the scope everything else is read
+ * through, and most people have one. Putting it in a switcher in the footer
+ * frees the body of the sidebar for the thing that actually varies: which view
+ * of that project you are looking at.
  */
+const VIEWS = [
+  { segment: "runs", label: "Test Runs", icon: ListChecksIcon },
+  { segment: "mrs", label: "Merge Requests", icon: GitPullRequestArrowIcon },
+  { segment: "tests", label: "Test Explorer", icon: FlaskConicalIcon },
+  { segment: "settings", label: "Settings", icon: SettingsIcon },
+] as const;
+
 export function AppSidebar({
   projects,
   activeSlug,
@@ -36,13 +61,16 @@ export function AppSidebar({
   isLoading = false,
   ...props
 }: AppSidebarProps) {
+  const { pathname } = useLocation();
+  const active = VIEWS.find((view) => pathname.startsWith(`/${activeSlug}/${view.segment}`));
+
   return (
     <Sidebar variant="floating" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="/">
+              <Link to={`/${activeSlug}/runs`}>
                 <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                   <ActivityIcon className="size-4" />
                 </div>
@@ -50,51 +78,98 @@ export function AppSidebar({
                   <span className="font-medium">cameri</span>
                   <span className="text-xs">Playwright reporting</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
-          <SidebarMenu className="gap-2">
-            <SidebarMenuItem>
-              {/* A heading, not a target — rendered as a span so it neither
-                  takes focus nor lights up on hover. */}
-              <SidebarMenuButton asChild className="font-medium hover:bg-transparent">
-                <span>Projects</span>
-              </SidebarMenuButton>
-              <SidebarMenuSub className="ml-0 border-l-0 px-1.5">
-                {isLoading ? (
-                  <SidebarMenuSubItem>
-                    <Skeleton className="h-7 w-full" />
-                  </SidebarMenuSubItem>
-                ) : projects.length === 0 ? (
-                  <SidebarMenuSubItem>
-                    <span className="text-muted-foreground px-2 text-xs">No projects yet</span>
-                  </SidebarMenuSubItem>
-                ) : (
-                  projects.map((project) => (
-                    <SidebarMenuSubItem key={project.slug}>
-                      {/* `asChild` so this is a real button: the default <a>
-                          has no href here and would drop out of the tab order. */}
-                      <SidebarMenuSubButton asChild isActive={project.slug === activeSlug}>
-                        <button
-                          type="button"
-                          className="w-full cursor-pointer"
-                          onClick={() => onSelectProject(project.slug)}
-                        >
-                          <span>{project.name}</span>
-                        </button>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))
-                )}
-              </SidebarMenuSub>
-            </SidebarMenuItem>
+          <SidebarGroupLabel>Views</SidebarGroupLabel>
+          <SidebarMenu>
+            {VIEWS.map((view) => (
+              <SidebarMenuItem key={view.segment}>
+                <SidebarMenuButton asChild isActive={view === active}>
+                  <Link to={`/${activeSlug}/${view.segment}`}>
+                    <view.icon />
+                    <span>{view.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ProjectSwitcher
+              projects={projects}
+              activeSlug={activeSlug}
+              onSelect={onSelectProject}
+              isLoading={isLoading}
+            />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function ProjectSwitcher({
+  projects,
+  activeSlug,
+  onSelect,
+  isLoading,
+}: {
+  projects: SidebarProject[];
+  activeSlug: string;
+  onSelect: (slug: string) => void;
+  isLoading: boolean;
+}) {
+  if (isLoading) return <Skeleton className="h-12 w-full" />;
+
+  const current = projects.find((project) => project.slug === activeSlug);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <SidebarMenuButton
+          size="lg"
+          className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+        >
+          <div className="bg-sidebar-accent text-sidebar-accent-foreground flex aspect-square size-8 items-center justify-center rounded-md text-xs font-semibold uppercase">
+            {(current?.name ?? activeSlug).slice(0, 2)}
+          </div>
+          <div className="grid flex-1 text-left leading-tight">
+            <span className="text-muted-foreground text-xs">Project</span>
+            <span className="truncate font-medium">{current?.name ?? activeSlug}</span>
+          </div>
+          <ChevronsUpDownIcon className="ml-auto size-4 opacity-60" />
+        </SidebarMenuButton>
+      </DropdownMenuTrigger>
+      {/* Width matched to the trigger so the menu reads as an expansion of it
+          rather than as a popup that happens to be nearby. */}
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        sideOffset={4}
+        className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+      >
+        <DropdownMenuLabel className="text-muted-foreground text-xs">Projects</DropdownMenuLabel>
+        {projects.length === 0 ? (
+          <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
+        ) : (
+          projects.map((project) => (
+            <DropdownMenuItem key={project.slug} onSelect={() => onSelect(project.slug)}>
+              <span className="truncate">{project.name}</span>
+              {project.slug === activeSlug ? <CheckIcon className="ml-auto size-4" /> : null}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

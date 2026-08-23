@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import type { RunListItem } from "@/trpc";
 
 /** Taken off the row rather than imported, so web keeps a single API dep. */
-type RunStatus = RunListItem["status"];
+export type RunStatus = RunListItem["status"];
 
 /**
  * Status colours are hard-coded rather than driven by the theme tokens: pass and
@@ -23,13 +23,20 @@ const STYLES: Record<RunStatus, string> = {
     "border-transparent bg-neutral-200 text-neutral-700 dark:bg-neutral-500/20 dark:text-neutral-300",
 };
 
-const LABELS: Record<RunStatus, string> = {
+/**
+ * Exported for the status filter, which needs both the labels and the order.
+ * Declared as a full `Record` so adding a run status to the contract breaks the
+ * build here rather than silently dropping an option out of the menu.
+ */
+export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
   running: "Running",
   passed: "Passed",
   failed: "Failed",
   timedOut: "Timed out",
   cancelled: "Cancelled",
 };
+
+const LABELS = RUN_STATUS_LABELS;
 
 export function RunStatusBadge({ status }: { status: RunStatus }) {
   return (

@@ -5,6 +5,7 @@ import type {
   RunStats,
   TestAttempt,
   TestStatus,
+  TestStep,
 } from "@cameri/contract";
 import type {
   FullConfig,
@@ -14,10 +15,12 @@ import type {
   TestCase,
   TestError as PwTestError,
   TestResult,
+  TestStep as PwTestStep,
 } from "@playwright/test/reporter";
 import {
   detectCiContext,
   detectGitContext,
+  detectMergeRequest,
   detectRunKey,
   localRunKey,
 } from "@cameri/contract/ci";
@@ -63,6 +66,8 @@ export default class CameriReporter implements Reporter {
   private chain: Promise<void> = Promise.resolve();
   private ready: Promise<void> = Promise.resolve();
   private flushTimer?: ReturnType<typeof setTimeout>;
+  /** Steps accumulated per in-flight attempt, drained when the attempt ends. */
+  private steps = new Map<string, TestStep[]>();
 
   constructor(options: CameriReporterOptions = {}) {
     this.config = resolveConfig(options);
@@ -92,6 +97,7 @@ export default class CameriReporter implements Reporter {
         playwrightVersion: config.version,
         git: detectGitContext(),
         ci: detectCiContext(),
+        mr: detectMergeRequest(),
         metadata: {},
       });
       this.runId = response.runId;
@@ -127,11 +133,42 @@ export default class CameriReporter implements Reporter {
     }
   }
 
+  /**
+   * Records one finished step.
+   *
+   * Playwright fires this innermost-first — a child ends before its parent — so
+   * what arrives is completion order, not the order a human reads the test in.
+   * `drainSteps` re-sorts by start time; collecting here stays O(1).
+   */
+  onStepEnd(test: TestCase, result: TestResult, step: PwTestStep): void {
+    if (this.disabled) return;
+
+    try {
+      const key = attemptKey(test, result);
+      const collected = this.steps.get(key) ?? [];
+      if (collected.length >= MAX_STEPS) return;
+
+      collected.push({
+        title: stripAnsi(step.title),
+        category: step.category,
+        depth: depthOf(step),
+        startedAt: step.startTime.toISOString(),
+        durationMs: Math.max(step.duration, 0),
+        // Only the headline: the full text is already on the attempt's error,
+        // and repeating a stack per step would dwarf the steps themselves.
+        error: step.error?.message ? firstLine(stripAnsi(step.error.message)) : null,
+      });
+      this.steps.set(key, collected);
+    } catch (error) {
+      this.fail("collect step", error);
+    }
+  }
+
   onTestEnd(test: TestCase, result: TestResult): void {
     if (this.disabled) return;
 
     try {
-      const attempt = this.toAttempt(test, result);
+      const attempt = { ...this.toAttempt(test, result), steps: this.drainSteps(test, result) };
       this.buffer.push(attempt);
 
       // Keep only the latest retry per test — that is the verdict the run
@@ -178,6 +215,23 @@ export default class CameriReporter implements Reporter {
     // A global error (e.g. a broken globalSetup) means no tests ran. Nothing to
     // report; just make sure the shard is not left hanging forever.
     this.log(`playwright reported a global error: ${error.message ?? "unknown"}`);
+  }
+
+  /**
+   * Takes the steps for one attempt and forgets them.
+   *
+   * Sorted by start time, with depth as the tie-break so a parent always
+   * precedes the child it opened on the same millisecond. That ordering plus
+   * `depth` is enough for the UI to redraw the tree.
+   */
+  private drainSteps(test: TestCase, result: TestResult): TestStep[] {
+    const key = attemptKey(test, result);
+    const collected = this.steps.get(key);
+    this.steps.delete(key);
+    if (!collected) return [];
+    return collected.sort(
+      (a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt) || a.depth - b.depth,
+    );
   }
 
   /**
@@ -290,6 +344,8 @@ export default class CameriReporter implements Reporter {
       tags: readTags(test),
       stdout: joinStream(result.stdout),
       stderr: joinStream(result.stderr),
+      // Filled in by `onTestEnd`; a start marker has no steps yet by definition.
+      steps: [],
       attachments: this.collectAttachments(test, result),
     };
   }
@@ -360,6 +416,30 @@ export default class CameriReporter implements Reporter {
 const ANSI = /\[[0-9;]*m/g;
 function stripAnsi(value: string): string {
   return value.replace(ANSI, "");
+}
+
+/** Per-attempt, not per-test: a retry is a separate timeline of steps. */
+function attemptKey(test: TestCase, result: TestResult): string {
+  return `${test.id}:${result.retry}`;
+}
+
+/** How deep a step sits in the tree — Playwright exposes the chain, not the level. */
+function depthOf(step: PwTestStep): number {
+  let depth = 0;
+  for (let node = step.parent; node; node = node.parent) depth += 1;
+  return depth;
+}
+
+/**
+ * A test that loops over a thousand assertions is real, and shipping every one
+ * of them helps nobody. Capping while collecting rather than trimming at the end
+ * keeps the memory ceiling in force during the run, not just after it.
+ */
+const MAX_STEPS = 500;
+
+function firstLine(value: string): string {
+  const line = value.split("\n", 1)[0] ?? value;
+  return line.length > 300 ? `${line.slice(0, 300)}…` : line;
 }
 
 function joinStream(chunks: Array<string | Buffer>): string | null {

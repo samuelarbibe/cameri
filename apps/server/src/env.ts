@@ -11,6 +11,17 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
   /** Public origin, used to build absolute upload URLs. */
   PUBLIC_URL: z.string().default("http://localhost:3000"),
+  /**
+   * Where the dashboard lives, for links posted outside cameri. Usually the
+   * same origin as the API; in development the Vite server is on its own port.
+   */
+  WEB_URL: z.string().default("http://localhost:5173"),
+  /**
+   * 32 bytes of base64. Required only to configure an integration — without it
+   * cameri simply refuses to store an outbound credential rather than storing
+   * one it cannot protect.
+   */
+  CAMERI_ENCRYPTION_KEY: z.string().optional(),
   /** Where attachment bytes land. `local` is for development only. */
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default("./.cameri-storage"),
