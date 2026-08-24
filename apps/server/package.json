@@ -1,6 +1,6 @@
 {
   "name": "@camerihq/server",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Cameri ingest API, tRPC app API and static web host",
