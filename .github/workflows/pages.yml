@@ -1,0 +1,39 @@
+name: Pages
+
+# The landing page in `site/` is static — no build step, no bundler — so this
+# uploads the directory as it stands. Screenshots are committed rather than
+# regenerated here: reproducing them needs a seeded Postgres and a real
+# Chromium, and a broken shoot should fail on a laptop, not on the deploy that
+# publishes the homepage.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a release finish rather than cancelling it, but never queue two deploys.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

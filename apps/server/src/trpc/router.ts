@@ -11,10 +11,12 @@ import {
   inArray,
   isNotNull,
   isNull,
+  notExists,
   sql,
   type AnyColumn,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { AppContext } from "../context.ts";
 import { createCipher, tokenHint } from "../crypto.ts";
@@ -34,6 +36,13 @@ import { adminProcedure, isAdmin, publicProcedure, router } from "./trpc.ts";
  * column rename shows up as a type error in the UI rather than as a silent
  * `undefined` at runtime.
  */
+/**
+ * `test_attempts` under a second name, so the failed-count subquery can ask
+ * "did any other attempt at this test pass?" without both sides of the
+ * comparison resolving against the same table.
+ */
+const recoveredAttempts = alias(testAttempts, "recovered_attempts");
+
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, at: new Date().toISOString() })),
 
@@ -100,6 +109,22 @@ export const appRouter = router({
                 and(
                   eq(testAttempts.runId, runs.id),
                   inArray(testAttempts.status, ["failed", "timedOut"]),
+                  // Tests that went green on a retry are flaky, not failed.
+                  // Counting them here put a red number next to runs the badge
+                  // called passed, which reads as a bug in the dashboard rather
+                  // than as information about the suite.
+                  notExists(
+                    db
+                      .select({ n: sql`1` })
+                      .from(recoveredAttempts)
+                      .where(
+                        and(
+                          eq(recoveredAttempts.runId, runs.id),
+                          eq(recoveredAttempts.testRef, testAttempts.testRef),
+                          eq(recoveredAttempts.status, "passed"),
+                        ),
+                      ),
+                  ),
                 ),
               )})`.mapWith(Number),
           })
@@ -389,16 +414,26 @@ export const appRouter = router({
             day,
             // Counted per *test per run*, not per attempt: a test retried three
             // times is one data point, and the flake flag is what says so.
-            passed: sql<number>`count(*) filter (where ${testAttempts.status} = 'passed' and not ${testAttempts.isFlaky})`.mapWith(
+            // Hence `count(distinct run_id)` throughout — a plain `count(*)`
+            // counts the retries, which both triples a hard failure's bar and
+            // makes every flake show up as a failure as well as a flake, since
+            // only the final green attempt carries `is_flaky`.
+            passed: sql<number>`count(distinct ${testAttempts.runId}) filter (where ${testAttempts.status} = 'passed' and not ${testAttempts.isFlaky})`.mapWith(
               Number,
             ),
-            failed: sql<number>`count(*) filter (where ${testAttempts.status} in ('failed', 'timedOut', 'interrupted') and not ${testAttempts.isFlaky})`.mapWith(
-              Number,
-            ),
+            // Runs where this test failed, less the runs where it came back on
+            // a retry: a flaky run has failed attempts too, and it is already
+            // counted in `flaky`. Subtraction rather than a correlated
+            // "…and no passing attempt" subquery, which would be the same
+            // answer for several times the plan.
+            failed: sql<number>`
+              count(distinct ${testAttempts.runId}) filter (where ${testAttempts.status} in ('failed', 'timedOut', 'interrupted'))
+              - count(distinct ${testAttempts.runId}) filter (where ${testAttempts.isFlaky})
+            `.mapWith(Number),
             flaky: sql<number>`count(distinct ${testAttempts.runId}) filter (where ${testAttempts.isFlaky})`.mapWith(
               Number,
             ),
-            skipped: sql<number>`count(*) filter (where ${testAttempts.status} = 'skipped')`.mapWith(
+            skipped: sql<number>`count(distinct ${testAttempts.runId}) filter (where ${testAttempts.status} = 'skipped')`.mapWith(
               Number,
             ),
             durationMs: sql<number>`coalesce(round(avg(${testAttempts.durationMs}) filter (where ${testAttempts.status} <> 'skipped')), 0)`.mapWith(

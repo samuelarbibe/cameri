@@ -4,6 +4,8 @@ A self-hostable Playwright reporter. Point your suite at a cameri server and
 every run — across every CI shard — lands in one place, with flake detection,
 failure clustering and run-over-run test history.
 
+**[Screenshots and a quickstart →](https://samuelarbibe.github.io/cameri/)**
+
 Two moving parts: a server you host, and a reporter you add to
 `playwright.config.ts`.
 
@@ -287,7 +289,8 @@ and you get the API alone.
 ## Contributing
 
 Development setup, the layout of the monorepo and how releases work are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](CONTRIBUTING.md). The landing page and the seed-and-shoot
+recipe behind its screenshots are in [`site/`](site/README.md).
 
 ## Licence
 

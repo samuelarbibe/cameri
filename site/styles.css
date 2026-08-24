@@ -1,0 +1,516 @@
+/*
+ * The landing page.
+ *
+ * Hand-written CSS rather than a build step: the site is one HTML file and a
+ * folder of PNGs, and adding a bundler to it would mean the thing that has to
+ * keep working for the project to have a homepage is a toolchain nobody is
+ * looking at. GitHub Pages serves this directory verbatim.
+ *
+ * The palette is lifted from the dashboard's own dark theme
+ * (apps/web/src/index.css) so the screenshots sit on the page rather than on
+ * top of it.
+ */
+
+:root {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --accent-green: oklch(0.77 0.17 162);
+
+  --radius: 0.375rem;
+  --max: 1120px;
+
+  /* The colour wash behind the hero. Declared here because it is painted
+     twice: once on the page, once inside the top bar, which has to repaint it
+     to stay invisible against it. See body::before and .topbar::before. */
+  --wash:
+    radial-gradient(60% 100% at 50% 0%, oklch(0.3 0.03 160 / 45%), transparent 70%),
+    radial-gradient(40% 80% at 85% 10%, oklch(0.28 0.04 250 / 35%), transparent 70%);
+
+  --sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --mono:
+    ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A single wash behind the hero. Fixed and pointer-transparent so it does not
+   scroll with the content or eat clicks. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 720px;
+  background: var(--wash);
+  pointer-events: none;
+  z-index: -1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* ── top bar ─────────────────────────────────────────────────────────────── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem clamp(1rem, 4vw, 2rem);
+  /* Clips the wash below, which is drawn at its full height so its gradients
+     resolve against the same box as the page's. */
+  overflow: hidden;
+}
+
+/* The bar has to be opaque — screenshots scroll underneath it and the nav has
+   to stay readable — but the wash behind the hero is `position: fixed`, so it
+   stays put as the page moves and an opaque bar cuts a visible rectangle out
+   of it. The fix is to paint the same wash inside the bar over the page
+   colour: the bar is sticky at the top of the viewport, which is exactly where
+   the fixed one is anchored, so the two line up at every scroll position and
+   the bar reads as background rather than as a bar. */
+.topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 720px;
+  background: var(--wash), var(--background);
+  /* Behind the wordmark and nav, but still above the bar's own (transparent)
+     background — the sticky bar's z-index makes it a stacking context, so this
+     does not escape into the page. */
+  z-index: -1;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.wordmark svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topbar nav {
+  display: flex;
+  gap: clamp(0.9rem, 3vw, 2rem);
+  font-size: 1rem;
+  font-weight: 450;
+  color: var(--muted-foreground);
+}
+
+.topbar nav a:hover {
+  color: var(--foreground);
+}
+
+/* ── hero ────────────────────────────────────────────────────────────────── */
+
+main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2rem);
+}
+
+.hero {
+  padding: clamp(3.5rem, 9vw, 7rem) 0 0;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-green);
+}
+
+.hero h1 {
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  font-weight: 650;
+  max-width: 18ch;
+  margin-inline: auto;
+}
+
+.lede {
+  max-width: 62ch;
+  margin: 1.25rem auto 0;
+  color: var(--muted-foreground);
+  font-size: clamp(1rem, 1.6vw, 1.125rem);
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 0.925rem;
+  font-weight: 500;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.button:hover {
+  background: var(--muted);
+}
+
+.button.primary {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+}
+
+.button.primary:hover {
+  background: oklch(0.9 0 0);
+}
+
+.button .gh {
+  width: 1rem;
+  height: 1rem;
+}
+
+.install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.75rem;
+  padding: 0.35rem 0.35rem 0.35rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  max-width: 100%;
+}
+
+.install code {
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+}
+
+.install button {
+  flex: none;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--muted);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.install button:hover {
+  background: oklch(0.33 0 0);
+}
+
+/* ── screenshots ─────────────────────────────────────────────────────────── */
+
+.shot {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: var(--background);
+  /* Two shadows: a tight one to seat the frame, a wide soft one to lift it off
+     a background that is nearly the same colour as the screenshot itself. */
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 60%),
+    0 24px 60px -20px oklch(0 0 0 / 80%);
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hero-shot {
+  margin-top: clamp(3rem, 7vw, 5rem);
+}
+
+/* ── the three-up strip ──────────────────────────────────────────────────── */
+
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 2rem;
+  margin: clamp(3.5rem, 8vw, 6rem) 0;
+  padding-top: clamp(3.5rem, 8vw, 6rem);
+  border-top: 1px solid var(--border);
+}
+
+.strip h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.strip p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.925rem;
+}
+
+/* ── alternating feature rows ────────────────────────────────────────────── */
+
+.features article {
+  padding: clamp(3rem, 7vw, 5.5rem) 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Screenshots run the full width of the container rather than sitting in a
+   column beside the text. These are dense tables — at half width the type in
+   them stops being type and becomes texture, which defeats the point of
+   showing the product at all. The prose gets the two-column treatment instead,
+   so the section still has a shape to it. */
+.features .copy {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  gap: clamp(1rem, 4vw, 3.5rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.features h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 620;
+  text-wrap: balance;
+}
+
+.features .prose > p {
+  color: var(--muted-foreground);
+  margin: 0 0 1rem;
+}
+
+.features .prose > p:last-child {
+  margin-bottom: 0;
+}
+
+.features code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+@media (max-width: 760px) {
+  .features .copy {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* ── quickstart ──────────────────────────────────────────────────────────── */
+
+.quickstart {
+  padding: clamp(3.5rem, 8vw, 6rem) 0;
+  border-top: 1px solid var(--border);
+}
+
+.quickstart > h2 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  text-align: center;
+}
+
+.quickstart > .lede {
+  text-align: center;
+}
+
+.steps {
+  counter-reset: step;
+  list-style: none;
+  max-width: 780px;
+  margin: 3rem auto 0;
+  padding: 0;
+}
+
+.steps li {
+  position: relative;
+  counter-increment: step;
+  padding: 0 0 2.5rem 3.25rem;
+}
+
+/* The rail: a line down the left of every step but the last, so the numbers
+   read as a sequence rather than as three unrelated cards. */
+.steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 1.06rem;
+  top: 2.5rem;
+  bottom: 0.5rem;
+  width: 1px;
+  background: var(--border);
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding-top: 0.25rem;
+}
+
+.steps p {
+  margin: 0.5rem 0 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.95rem;
+}
+
+pre {
+  margin: 0 0 0.75rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+pre code {
+  font-size: inherit;
+  color: oklch(0.9 0 0);
+}
+
+.footnote {
+  max-width: 780px;
+  margin: 0 auto;
+  padding-left: 3.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+.footnote a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+
+.footnote a:hover {
+  text-decoration-color: currentColor;
+}
+
+@media (max-width: 640px) {
+  .footnote {
+    padding-left: 0;
+  }
+}
+
+/* ── footer ──────────────────────────────────────────────────────────────── */
+
+footer {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 2.5rem clamp(1rem, 4vw, 2rem) 4rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+footer .links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+  font-size: 0.925rem;
+}
+
+footer .links a:hover {
+  color: var(--muted-foreground);
+}
+
+footer p {
+  margin: 1.25rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+}
