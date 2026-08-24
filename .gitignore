@@ -142,6 +142,10 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
+# macOS. Worth ignoring on principle, and worth it here in particular: the
+# Pages workflow uploads `site/` verbatim, so a stray one gets published.
+.DS_Store
+
 # cameri
 .turbo/
 .cameri-storage/
