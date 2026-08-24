@@ -173,7 +173,7 @@ one. npm's trusted publishing exchanges the workflow's short-lived OIDC token
 for publish rights, and attaches provenance — a signed, verifiable link from
 the tarball back to the run that built it — automatically.
 
-Four things have to line up, and the failure mode for each is the same
+Five things have to line up, and the failure mode for each is the same
 unhelpful authentication error:
 
 - `id-token: write` on the job.
@@ -183,6 +183,13 @@ unhelpful authentication error:
 - `repository.url` in each published manifest matching the GitHub repository.
 - npm 11.5.1 or newer. Node 22 ships npm 10, which has no OIDC support at all,
   which is why the workflow upgrades it before publishing.
+- **No `registry-url` on `actions/setup-node`.** It looks harmless and it is
+  not: with `registry-url` set, setup-node always writes an `.npmrc` containing
+  `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, and with no token
+  supplied it fills in the literal placeholder `XXXXX-XXXXX-XXXXX-XXXXX`. npm
+  then believes it is authenticated, never attempts the OIDC exchange, and the
+  registry rejects the bogus credential with `404 Not Found` — not 403, because
+  it will not confirm a package exists to someone who cannot write to it.
 
 A trusted publisher can only be configured on a package that already exists, so
 a brand new package name has to be published once by hand — `npm login && pnpm
