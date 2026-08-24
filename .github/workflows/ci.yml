@@ -10,7 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Everything that ships must run on the oldest supported Node.
   check:
     runs-on: ubuntu-latest
     strategy:
@@ -30,9 +29,6 @@ jobs:
       - run: pnpm --filter "./packages/*" build
       - run: pnpm --filter @camerihq/server build
 
-  # The image is what people actually deploy, and it builds differently from
-  # `pnpm build` — a pruned production install, no dev dependencies, alpine.
-  # Building it here means that breaks in a pull request rather than on `main`.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -42,14 +38,10 @@ jobs:
         with:
           context: .
           push: false
-          # One platform: this job answers "does it build", and the release
-          # workflow is where the cross-platform cost is worth paying.
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # The web bundle is built with Vite, which needs a newer Node than the
-  # runtime does. The output is static, so this only constrains contributors.
   web:
     runs-on: ubuntu-latest
     steps:

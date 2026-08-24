@@ -24,16 +24,19 @@ while the build is still going, not a report published at the end.
 
 ## Run the server
 
-The image is `ghcr.io/samuelarbibe/cameri`, tagged `main` and by full commit
-sha. It holds both halves — the API and the dashboard it serves — so a
-deployment is one container and one Postgres, with no reverse proxy needed to
-put them back on the same origin.
+The image is `ghcr.io/samuelarbibe/cameri`. It holds both halves — the API and
+the dashboard it serves — so a deployment is one container and one Postgres,
+with no reverse proxy needed to put them back on the same origin.
+
+Every release is tagged `latest`, `0.2`, `0.2.1` and by full commit sha. Pin to
+whichever of those you are comfortable with; the image and the reporter share a
+version number, so `0.2.1` on both means they were built and tested together.
 
 ```yaml
 # compose.yml
 services:
   cameri:
-    image: ghcr.io/samuelarbibe/cameri:main
+    image: ghcr.io/samuelarbibe/cameri:latest
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -163,10 +166,10 @@ something every shard of one build agrees on.
 If a shard dies without reporting, the run does not hang: it is swept to
 `timedOut` after `RUN_STALE_MINUTES` of silence.
 
-The [`cameri` CLI](packages/cli/README.md) is there for when detection is
-wrong or a run spawns Playwright more than once — `npx cameri run -- playwright
-test` resolves the environment once and injects it, and `npx cameri info`
-prints what it detected.
+[`@camerihq/cli`](packages/cli/README.md) is there for when detection is wrong
+or a run spawns Playwright more than once — `npx cameri run -- playwright test`
+resolves the environment once and injects it, and `npx cameri info` prints what
+it detected.
 
 ## Storage
 
