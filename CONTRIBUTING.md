@@ -176,13 +176,16 @@ Six things have to line up, and the failure mode for each is the same
 unhelpful authentication error:
 
 - `id-token: write` on the job.
-- A trusted publisher on npmjs.com for **every** published package, not just
-  one of them — `pnpm publish -r` publishes them in one go and the first
-  refusal ends the release.
-- Each of those naming repository `samuelarbibe/cameri` and workflow
-  `release.yml` — the filename is matched exactly, extension included, so
-  renaming this file breaks publishing until npm is told — and leaving the
-  environment field empty, because the job does not set one.
+- A trusted publisher for **every** published package. It is configured per
+  package, at `npmjs.com/package/<name>/access`, not once per account —
+  `pnpm publish -r` publishes them in one go and the first refusal ends the
+  release.
+- Each of those naming repository `samuelarbibe/cameri`, workflow
+  `release.yml` and environment `production`. The filename is matched exactly,
+  extension included, so renaming this file breaks publishing until npm is
+  told. The environment is why the publish job carries
+  `environment: production` — the claim only appears in the token when the job
+  declares one, and npm compares it.
 - `repository.url` in each published manifest matching the GitHub repository.
 - npm 11.5.1 or newer. Node 22 ships npm 10, which has no OIDC support at all,
   which is why the workflow upgrades it before publishing.
