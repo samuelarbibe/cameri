@@ -1,6 +1,6 @@
 {
   "name": "cameri",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "CLI for Cameri — orchestrates sharded Playwright runs",
   "license": "MIT",
   "type": "module",
