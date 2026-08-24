@@ -77,11 +77,10 @@ Everything that *ships* — server, reporter, CLI — targets Node 20.10 and is
 built with `target: "node20"`. CI runs the typecheck, tests and those builds on
 both 20.10 and 22.
 
-Two dev-only tools refuse to install below that line: `vite@8` wants
-`^20.19.0 || >=22.12.0` and `@changesets/cli@3` wants `^22.11 || ^24 || >=26`.
-Neither runs in production, so the web build gets its own Node 22 CI job rather
-than dragging the runtime floor up. If you want contributors on plain 20.10,
-downgrade to `vite@6`.
+One dev-only tool refuses to install below that line: `vite@8` wants
+`^20.19.0 || >=22.12.0`. It does not run in production, so the web build gets
+its own Node 22 CI job rather than dragging the runtime floor up. If you want
+contributors on plain 20.10, downgrade to `vite@6`.
 
 ## Releasing
 
@@ -173,13 +172,17 @@ one. npm's trusted publishing exchanges the workflow's short-lived OIDC token
 for publish rights, and attaches provenance — a signed, verifiable link from
 the tarball back to the run that built it — automatically.
 
-Five things have to line up, and the failure mode for each is the same
+Six things have to line up, and the failure mode for each is the same
 unhelpful authentication error:
 
 - `id-token: write` on the job.
-- The trusted publisher on npmjs.com naming repository `samuelarbibe/cameri`
-  and workflow `release.yml` — the filename is matched exactly, extension
-  included, so renaming this file breaks publishing until npm is told.
+- A trusted publisher on npmjs.com for **every** published package, not just
+  one of them — `pnpm publish -r` publishes them in one go and the first
+  refusal ends the release.
+- Each of those naming repository `samuelarbibe/cameri` and workflow
+  `release.yml` — the filename is matched exactly, extension included, so
+  renaming this file breaks publishing until npm is told — and leaving the
+  environment field empty, because the job does not set one.
 - `repository.url` in each published manifest matching the GitHub repository.
 - npm 11.5.1 or newer. Node 22 ships npm 10, which has no OIDC support at all,
   which is why the workflow upgrades it before publishing.
@@ -190,6 +193,15 @@ unhelpful authentication error:
   then believes it is authenticated, never attempts the OIDC exchange, and the
   registry rejects the bogus credential with `404 Not Found` — not 403, because
   it will not confirm a package exists to someone who cannot write to it.
+
+The reason that error is so unhelpful is that `oidc()` in the npm CLI is
+written never to throw. Every failure path logs at `silly` and returns
+undefined, npm carries on as an anonymous client, and what surfaces is
+`ENEEDAUTH` — which names no package and gives no reason.
+[`scripts/check-trusted-publishing.mjs`](scripts/check-trusted-publishing.mjs)
+runs the same handshake first, per package, and fails with the id_token claims
+and whatever the registry actually said. It is a check and nothing more: the
+token it gets is thrown away, and `pnpm publish` still does its own.
 
 A trusted publisher can only be configured on a package that already exists, so
 a brand new package name has to be published once by hand — `npm login && pnpm

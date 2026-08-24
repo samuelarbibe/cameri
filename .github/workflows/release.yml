@@ -38,6 +38,8 @@ jobs:
       - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
 
+      - run: node scripts/check-trusted-publishing.mjs
+
       - id: version
         env:
           BUMP: ${{ inputs.version }}
