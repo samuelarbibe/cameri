@@ -19,11 +19,9 @@
     "db:studio": "pnpm --filter @camerihq/db db:studio",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
-    "changeset": "changeset",
-    "release": "turbo run build --filter=./packages/* && changeset publish"
+    "version:set": "node scripts/set-version.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.1",
     "@types/node": "^20.19.43",
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",

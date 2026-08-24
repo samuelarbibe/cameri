@@ -1,11 +1,14 @@
-# cameri
+# @camerihq/cli
 
 Command line companion to [cameri](https://github.com/samuelarbibe/cameri), the
 self-hostable Playwright reporter. It resolves the reporting environment once
 and hands it to your test command, and tells you what it detected when CI
 disagrees with you.
 
+The package is scoped; the command it installs is not.
+
 ```sh
+npm install -D @camerihq/cli
 npx cameri --help
 ```
 

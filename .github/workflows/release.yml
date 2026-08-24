@@ -1,73 +1,58 @@
 name: release
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "patch, minor, major, or an explicit version like 1.2.0"
+        required: true
+        default: patch
+        type: string
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  # Opens (and keeps updating) a "Version Packages" pull request while there are
-  # unreleased changesets. Merging that PR is what publishes: the same push then
-  # finds no changesets left and runs `pnpm release` instead.
-  npm:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
-      # npm provenance — a signed, verifiable link from the tarball back to the
-      # workflow run that built it.
+      packages: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Changesets reads the history to work out what has already shipped.
-          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          # No dependency cache in a release build: what gets published should
-          # come from the lockfile and the registry, not from a cache entry an
-          # earlier job could have written.
 
-      # `changeset publish` shells out to `pnpm publish`, and pnpm 10 hands the
-      # actual publish to whatever `npm` is on PATH. Node 22 ships npm 10, which
-      # predates OIDC trusted publishing — so once a trusted publisher is
-      # configured on npmjs.com, this line is what lets it be used.
       - run: npm install -g npm@latest
-
       - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
 
-      - uses: changesets/action@v1
-        with:
-          version: pnpm changeset version
-          publish: pnpm release
-          commit: "chore: version packages"
-          title: "chore: version packages"
+      - id: version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Bootstrap only. A trusted publisher cannot be configured on npmjs.com
-          # until the package exists, so the first release authenticates with a
-          # token — after which npm prefers OIDC over this and the secret can be
-          # deleted along with these two lines.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          BUMP: ${{ inputs.version }}
+        run: echo "value=$(node scripts/set-version.mjs "$BUMP")" >> "$GITHUB_OUTPUT"
 
-  # The image is versioned by commit, not by changeset: the server is not a
-  # published package, so there is no release for it to hang off. `main` is
-  # whatever is deployed from the tip; the sha tag is what you pin to.
-  image:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
+      - run: pnpm build
+
+      - name: Commit and tag
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: release v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main --follow-tags
+
+      - name: Publish to npm
+        run: pnpm publish -r --access public --no-git-checks
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -79,7 +64,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=main
+            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.value }}
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.value }}
             type=sha,format=long
       - uses: docker/build-push-action@v6
         with:
@@ -87,8 +74,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # amd64 for servers, arm64 because half of self-hosting is someone's
-          # Apple laptop or a Graviton box.
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes

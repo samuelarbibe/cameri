@@ -9,15 +9,15 @@ cameri/
 │  └─ web/          Vite + React dashboard
 └─ packages/
    ├─ reporter/     @camerihq/playwright-reporter — runs in your CI
-   ├─ cli/          cameri — wraps a Playwright run
+   ├─ cli/          @camerihq/cli — wraps a Playwright run
    ├─ contract/     wire schemas shared by every client
    ├─ core/         flake detection, clustering, run aggregation
    └─ db/           Drizzle schema and migrations (PostgreSQL)
 ```
 
-Two of these are published — `@camerihq/playwright-reporter` and `cameri`. The
-rest are `private` and get bundled into whatever consumes them, rather than
-shipped as packages nobody asked for.
+Two of these are published — `@camerihq/playwright-reporter` and
+`@camerihq/cli`. The rest are `private` and get bundled into whatever consumes
+them, rather than shipped as packages nobody asked for.
 
 ## Getting started
 
@@ -42,7 +42,6 @@ a no-op in CI and in containers. The variables themselves are documented in the
 pnpm build          # turbo, respects the dependency graph
 pnpm test           # node:test in packages/core
 pnpm typecheck
-pnpm changeset      # before releasing the published packages
 ```
 
 To exercise the container rather than the source:
@@ -86,44 +85,83 @@ downgrade to `vite@6`.
 
 ## Releasing
 
-| Package | Registry |
+| Artifact | Where it lands |
 | --- | --- |
 | `@camerihq/playwright-reporter` | npm |
-| `cameri` (the CLI) | npm |
+| `@camerihq/cli` | npm |
 | the server image | `ghcr.io/samuelarbibe/cameri` |
 
-Everything in the workspace lives under `@camerihq/`, published or not, so a
-package that is one day worth shipping does not have to be renamed — and so
-nothing internal can ever be published under a scope somebody else owns. The
-`cameri` CLI is the one exception: unscoped, because `npx cameri` is the point
-of it.
+Releasing is a decision, not a consequence of merging. Push to `main` as often
+as you like and nothing ships; when you want a release, run the workflow:
 
-Describe a change with `pnpm changeset` and commit the file it writes. On
-`main`, [`.github/workflows/release.yml`](.github/workflows/release.yml) keeps
-a "Version Packages" pull request up to date with everything unreleased;
-merging it bumps the versions, writes the changelogs and publishes. Nothing
-goes to npm until that PR is merged, which makes the release a reviewed act
-rather than a side effect of landing a commit.
+```sh
+gh workflow run release.yml -f version=minor
+```
 
-The image needs no credentials — it pushes to GHCR with the workflow's own
-token, tagged `main` and with the full commit sha, on every push.
+or hit **Run workflow** on the Actions tab and pick `patch`, `minor`, `major`
+or an explicit version. [`.github/workflows/release.yml`](.github/workflows/release.yml)
+then does the whole thing in one job:
+
+```
+  typecheck + test ──► nothing gets a version until these pass
+         │
+         ▼
+  set-version.mjs ──► one number across server, reporter and CLI
+         │
+         ▼
+  build ──► commit "chore: release vX.Y.Z", tag vX.Y.Z, push to main
+         │
+         ▼
+  pnpm publish -r ──► npm, authenticated by OIDC
+         │
+         ▼
+  buildx ──► ghcr.io, tagged latest / X.Y / X.Y.Z / sha
+         │
+         ▼
+  gh release create --generate-notes
+```
+
+The release notes are generated from the pull requests merged since the last
+tag, which is the changelog nobody has to remember to write. Squash-merge with
+a sensible PR title and it reads properly.
+
+The three released artifacts share one version, set by
+[`scripts/set-version.mjs`](scripts/set-version.mjs). A server-only change
+still bumps the reporter, and that is the point: "which reporter goes with this
+image" is answered by reading the two numbers. Everything else in the workspace
+is `private` and unversioned — it is bundled into one of the three or it is not
+published at all.
+
+`pnpm publish -r` picks up exactly the packages that are not `private`, so
+adding a fourth published package is a matter of dropping the `private` flag
+and adding its directory to `RELEASED` in the version script. It has to be
+`pnpm publish` and not `npm publish`: the manifests carry `workspace:*`, and
+only pnpm rewrites that into a real version on the way out. The publish itself
+is still delegated to the npm binary on `PATH`, which is why the workflow
+upgrades npm first.
+
+Pull requests build the image without pushing it, so a break in the Dockerfile
+shows up before it lands rather than during a release.
 
 ### Trusted publishing
 
-npm's trusted publishing exchanges a short-lived OIDC token for publish rights,
-so there is no long-lived secret to leak or rotate, and provenance is attached
-automatically. It can only be configured on a package that already exists,
-which makes the first release a chicken-and-egg problem: it goes out
-authenticated by an `NPM_TOKEN` secret, and everything after it does not.
+There is no npm token anywhere in this repository, and there should never be
+one. npm's trusted publishing exchanges the workflow's short-lived OIDC token
+for publish rights, and attaches provenance — a signed, verifiable link from
+the tarball back to the run that built it — automatically.
 
-Once `@camerihq/playwright-reporter` and `cameri` are on the registry, add a
-trusted publisher to each on npmjs.com — repository `samuelarbibe/cameri`,
-workflow `release.yml` (the filename is matched exactly, extension included) —
-and then delete the `NODE_AUTH_TOKEN` and `NPM_CONFIG_PROVENANCE` lines from
-`release.yml` and revoke the token. Nothing else changes: `id-token: write` is
-already set, and the workflow upgrades npm because the one Node 22 ships
-predates OIDC support.
+Four things have to line up, and the failure mode for each is the same
+unhelpful authentication error:
 
-Two things that will fail the exchange if they drift: `repository.url` in each
-manifest must match the GitHub repository exactly, and only GitHub-hosted
-runners are supported.
+- `id-token: write` on the job.
+- The trusted publisher on npmjs.com naming repository `samuelarbibe/cameri`
+  and workflow `release.yml` — the filename is matched exactly, extension
+  included, so renaming this file breaks publishing until npm is told.
+- `repository.url` in each published manifest matching the GitHub repository.
+- npm 11.5.1 or newer. Node 22 ships npm 10, which has no OIDC support at all,
+  which is why the workflow upgrades it before publishing.
+
+A trusted publisher can only be configured on a package that already exists, so
+a brand new package name has to be published once by hand — `npm login && pnpm
+--filter <name> publish --access public` — before the workflow can take it
+over. Only GitHub-hosted runners are supported.
