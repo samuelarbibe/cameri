@@ -107,11 +107,11 @@ is four jobs, and nothing ships unless the one in front of it passed:
     │
     ▼
   publish ──► set-version.mjs: one number across server, reporter and CLI
-    │         commit "chore: release vX.Y.Z", tag it, push to main
     │         pnpm publish -r ──► npm, authenticated by OIDC
+    │         tag vX.Y.Z
     ▼
-  image ────► buildx from the tag ──► ghcr.io
-    │         tagged latest / X.Y / X.Y.Z / sha
+  image ────► buildx ──► ghcr.io, tagged latest / X.Y / X.Y.Z / sha
+    │
     ▼
   announce ─► gh release create --generate-notes
 ```
@@ -121,23 +121,32 @@ workflow by both this and [`ci.yml`](.github/workflows/ci.yml), so a release
 runs exactly what a pull request runs — including the Docker build — rather
 than a second definition of "the tests" that drifts from the first.
 
-`image` and `announce` check out the tag `publish` just created, not the commit
-the workflow started from: by then the version bump is a commit that did not
-exist when you pressed the button.
-
 The release notes are generated from the pull requests merged since the last
 tag, which is the changelog nobody has to remember to write. Squash-merge with
 a sensible PR title and it reads properly.
 
+### Where the version lives
+
+In the tags, and nowhere else. The three released manifests sit at `0.0.0` in
+the working tree; `set-version.mjs` reads the highest `v*` tag, computes the
+next one and writes it into them on the runner, minutes before they are
+published. Nothing is committed and `main` never receives a push from CI.
+
+That is not only tidier — it is what makes required status checks possible at
+all. A required check blocks a direct push exactly as it blocks a merge, and
+the version commit would be a brand new commit with no checks against it. The
+usual answer is to let the GitHub Actions app bypass the ruleset, but bypass
+actors of that type are only available to organisation-owned repositories.
+Tagging sidesteps the whole question: the ruleset targets branches, so pushing
+a tag is not something it has an opinion about.
+
 ### Protecting `main`
 
 The checks that gate a pull request are `test / check (20.10)`,
-`test / check (22)`, `test / web` and `test / image`.
-
-One wrinkle if you add them as required: the `publish` job pushes the version
-commit straight to `main`, and a required check blocks a direct push just as it
-blocks a merge. The ruleset needs a bypass for the GitHub Actions app
-(integration `15368`) or releases will fail at the push.
+`test / check (22)`, `test / web` and `test / image`. They are declared in a
+repository ruleset on the default branch; the names have to match the job
+names in `test.yml`, prefixed with the calling job's id, so renaming a job
+there quietly stops gating anything until the ruleset is updated too.
 
 The three released artifacts share one version, set by
 [`scripts/set-version.mjs`](scripts/set-version.mjs). A server-only change
