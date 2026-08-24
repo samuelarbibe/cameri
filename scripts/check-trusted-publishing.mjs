@@ -98,10 +98,13 @@ for (const pkg of published) {
 if (failures.length > 0) {
   die(
     `npm will not issue a publish token for: ${failures.join(", ")}.\n\n` +
-      "Check the trusted publisher on npmjs.com for each of them. The\n" +
-      "repository, the workflow filename and the environment all have to match\n" +
-      "the claims above exactly — an environment configured on npm but not set\n" +
-      "on the job is the usual culprit, and so is a publisher configured on one\n" +
-      "package of a workspace but not the others.",
+      "Trusted publishing is configured per package, not per account, at\n" +
+      "https://www.npmjs.com/package/<name>/access. The repository, the\n" +
+      "workflow filename and the environment all have to match the claims\n" +
+      "above exactly — and `environment` is only in the token at all if the\n" +
+      "job declares one.\n\n" +
+      "`package not found` there means no publisher matched, not that the\n" +
+      "package is missing — the registry will not tell an unauthorised caller\n" +
+      "which of the two it is.",
   );
 }
