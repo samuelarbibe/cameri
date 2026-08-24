@@ -1,0 +1,31 @@
+# Everything the image builds for itself, plus everything it must never see.
+#
+# `node_modules` matters most: copying the host's would drop platform-specific
+# binaries into an alpine image and quietly shadow the install the build stage
+# just did.
+
+.git
+.github
+node_modules
+**/node_modules
+
+# Build output — the image produces its own.
+dist
+**/dist
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# Secrets. A stray `.env` baked into a layer is readable by anyone who can pull
+# the image, whatever the running container's environment says.
+.env
+.env.*
+!.env.example
+
+# Local state that means nothing inside a container.
+.cameri-storage
+docker/
+**/test-results
+**/playwright-report
+**/.DS_Store
+*.log

@@ -8,8 +8,8 @@ import {
   type ReportResultsResponse,
   type RunStats,
   type UploadTarget,
-} from "@cameri/contract";
-import { deriveRunStatus, errorSignature, isFlakyWithinRun, mergeStats } from "@cameri/core";
+} from "@camerihq/contract";
+import { deriveRunStatus, errorSignature, isFlakyWithinRun, mergeStats } from "@camerihq/core";
 import {
   attachments,
   runs,
@@ -18,7 +18,7 @@ import {
   tests,
   type NewAttachment,
   type NewTestAttempt,
-} from "@cameri/db";
+} from "@camerihq/db";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -320,6 +320,14 @@ export function ingestRoutes(app: AppContext) {
     if (!storage.write) throw new HTTPException(404, { message: "no local blob sink" });
 
     const key = blobKey(c.req.path);
+
+    // The signature *is* the authorisation on this route. It is not behind the
+    // record-key middleware, because the reporter uploads with whatever headers
+    // the presigned target told it to send — the same shape as writing to S3.
+    if (!storage.verifyUpload?.(key, c.req.query())) {
+      throw new HTTPException(403, { message: "upload URL is invalid or expired" });
+    }
+
     if (!c.req.raw.body) throw new HTTPException(400, { message: "empty body" });
 
     await storage.write(key, Readable.fromWeb(c.req.raw.body as never));

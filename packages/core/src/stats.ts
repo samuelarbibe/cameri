@@ -1,4 +1,4 @@
-import type { RunStats, RunStatus, TestStatus } from "@cameri/contract";
+import type { RunStats, RunStatus, TestStatus } from "@camerihq/contract";
 import { groupByTest, isFlakyWithinRun, type AttemptLike } from "./flake.ts";
 
 export interface DurationAttempt extends AttemptLike {

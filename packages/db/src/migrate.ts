@@ -1,7 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { createDatabase } from "./client.ts";
 import { loadDotenv } from "./dotenv.ts";
+import { applyMigrations } from "./migrator.ts";
 
 loadDotenv();
 
@@ -11,16 +10,14 @@ if (!url) {
   process.exit(1);
 }
 
-const { db, close } = createDatabase({ url, maxConnections: 1 });
-
 try {
-  await migrate(db, {
-    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
+  await applyMigrations({
+    url,
+    ssl: process.env.DATABASE_SSL === "true",
+    folder: fileURLToPath(new URL("../drizzle", import.meta.url)),
   });
   console.log("migrations applied");
 } catch (error) {
   console.error("migration failed:", error);
   process.exitCode = 1;
-} finally {
-  await close();
 }

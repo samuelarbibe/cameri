@@ -10,7 +10,7 @@ export default defineConfig({
   target: "node20",
   platform: "node",
   banner: { js: "#!/usr/bin/env node" },
-  noExternal: ["@cameri/contract"],
+  noExternal: ["@camerihq/contract"],
   define: {
     __CAMERI_VERSION__: JSON.stringify(pkg.version),
   },

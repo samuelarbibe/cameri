@@ -7,5 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@cameri/server", "@cameri/web"]
+  "ignore": ["@camerihq/server", "@camerihq/web"]
 }

@@ -5,13 +5,13 @@ import type {
   CreateRunResponse,
   ReportResultsRequest,
   ReportResultsResponse,
-} from "@cameri/contract";
+} from "@camerihq/contract";
 // Values come from the zod-free entry point — see packages/contract/src/constants.ts.
 import {
   CLIENT_VERSION_HEADER,
   INGEST_API_VERSION,
   RECORD_KEY_HEADER,
-} from "@cameri/contract/constants";
+} from "@camerihq/contract/constants";
 import type { ResolvedConfig } from "./config.ts";
 
 // Injected at build time by tsup so the server can spot stale reporters.

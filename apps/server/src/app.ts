@@ -6,6 +6,7 @@ import { logger } from "hono/logger";
 import { ZodError } from "zod";
 import type { AppContext } from "./context.ts";
 import { ingestRoutes } from "./routes/ingest.ts";
+import { webRoutes } from "./routes/web.ts";
 import { appRouter } from "./trpc/router.ts";
 
 export function createApp(app: AppContext) {
@@ -56,6 +57,10 @@ export function createApp(app: AppContext) {
       createContext: () => ({ app }),
     }),
   );
+
+  // Last, so that every API route above wins its path outright and the
+  // dashboard only ever answers what is left over.
+  if (app.env.WEB_DIST) server.route("/", webRoutes(app.env.WEB_DIST));
 
   return server;
 }

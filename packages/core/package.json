@@ -1,5 +1,5 @@
 {
-  "name": "@cameri/core",
+  "name": "@camerihq/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@cameri/contract": "workspace:*"
+    "@camerihq/contract": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.23.12"

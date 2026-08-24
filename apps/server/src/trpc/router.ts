@@ -1,5 +1,5 @@
-import { runStatusSchema, type RunStatus } from "@cameri/contract";
-import { attachments, integrations, projects, runs, shards, testAttempts, tests } from "@cameri/db";
+import { runStatusSchema, type RunStatus } from "@camerihq/contract";
+import { attachments, integrations, projects, runs, shards, testAttempts, tests } from "@camerihq/db";
 import { TRPCError } from "@trpc/server";
 import {
   and,

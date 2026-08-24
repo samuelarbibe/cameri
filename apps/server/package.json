@@ -1,5 +1,5 @@
 {
-  "name": "@cameri/server",
+  "name": "@camerihq/server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -22,9 +22,9 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@cameri/contract": "workspace:*",
-    "@cameri/core": "workspace:*",
-    "@cameri/db": "workspace:*",
+    "@camerihq/contract": "workspace:*",
+    "@camerihq/core": "workspace:*",
+    "@camerihq/db": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "@trpc/server": "^11.18.0",
     "dotenv": "^17.4.2",

@@ -4,11 +4,11 @@
  * The plaintext key is shown exactly once — only its sha256 is stored — so
  * whatever this prints is the only copy.
  *
- *   pnpm --filter @cameri/server exec tsx src/scripts/bootstrap.ts "My App"
+ *   pnpm --filter @camerihq/server exec tsx src/scripts/bootstrap.ts "My App"
  */
 import { randomBytes } from "node:crypto";
-import { projects, recordKeys } from "@cameri/db";
-import { loadDotenv } from "@cameri/db/dotenv";
+import { projects, recordKeys } from "@camerihq/db";
+import { loadDotenv } from "@camerihq/db/dotenv";
 import { hashRecordKey } from "../auth.ts";
 import { createContext } from "../context.ts";
 

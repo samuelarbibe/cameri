@@ -28,7 +28,25 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm --filter "./packages/*" build
-      - run: pnpm --filter @cameri/server build
+      - run: pnpm --filter @camerihq/server build
+
+  # The image is what people actually deploy, and it builds differently from
+  # `pnpm build` — a pruned production install, no dev dependencies, alpine.
+  # Building it here means that breaks in a pull request rather than on `main`.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          # One platform: this job answers "does it build", and the release
+          # workflow is where the cross-platform cost is worth paying.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # The web bundle is built with Vite, which needs a newer Node than the
   # runtime does. The output is static, so this only constrains contributors.
@@ -42,4 +60,4 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cameri/web build
+      - run: pnpm --filter @camerihq/web build

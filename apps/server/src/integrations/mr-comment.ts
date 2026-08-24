@@ -1,5 +1,5 @@
-import { integrations, projects, runs, shards, testAttempts, tests } from "@cameri/db";
-import { aggregateStats } from "@cameri/core";
+import { integrations, projects, runs, shards, testAttempts, tests } from "@camerihq/db";
+import { aggregateStats } from "@camerihq/core";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { AppContext } from "../context.ts";
 import { createCipher } from "../crypto.ts";

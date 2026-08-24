@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { TestError } from "@cameri/contract";
+import type { TestError } from "@camerihq/contract";
 
 const ANSI = /\[[0-9;]*m/g;
 const HEX = /0x[0-9a-f]+/gi;
