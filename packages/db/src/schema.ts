@@ -5,7 +5,7 @@ import {
   TEST_STATUSES,
   type RunStats,
   type TestStep,
-} from "@cameri/contract";
+} from "@camerihq/contract";
 import { relations, sql } from "drizzle-orm";
 import {
   bigint,
@@ -252,7 +252,7 @@ export const testAttempts = pgTable(
     errorMessage: text("error_message"),
     errorStack: text("error_stack"),
     errorSnippet: text("error_snippet"),
-    /** Cluster key from `@cameri/core`; groups "the same failure" together. */
+    /** Cluster key from `@camerihq/core`; groups "the same failure" together. */
     errorSignature: text("error_signature"),
 
     annotations: jsonb("annotations")

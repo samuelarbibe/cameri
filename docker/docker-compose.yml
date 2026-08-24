@@ -38,6 +38,44 @@ services:
       timeout: 5s
       retries: 10
 
+  # Cameri itself — API and dashboard on one port.
+  #
+  # Behind a profile so `docker compose up` stays what it has always been: the
+  # backing services for `pnpm dev`, with the app running from source on the
+  # host. `docker compose --profile app up` runs the built thing instead.
+  app:
+    profiles: [app]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://cameri:cameri@postgres:5432/cameri
+      # Where this instance is reachable *from outside*: it goes into upload
+      # URLs handed to CI runners and into links posted on merge requests, so
+      # `localhost` is right only while the only reader is this machine.
+      PUBLIC_URL: ${CAMERI_PUBLIC_URL:-http://localhost:3000}
+      # Signs upload URLs and encrypts stored GitLab tokens. Put one in
+      # `docker/.env` — `openssl rand -base64 32`. Deliberately not defaulted to
+      # a literal: a key committed to a repository is not a key. Left empty the
+      # server starts and says so, and upload URLs stop verifying on restart.
+      #
+      # Not `:?` — compose interpolates every service in the file, profile or
+      # not, so a required variable here would break `docker compose up` for
+      # everyone running the dev stack.
+      CAMERI_ENCRYPTION_KEY: "${CAMERI_ENCRYPTION_KEY:-}"
+    ports:
+      - "${CAMERI_PORT:-3000}:3000"
+    volumes:
+      # Attachment bytes. On the local driver these are files on disk, and
+      # losing them means every trace and video ever uploaded.
+      - cameri-storage:/data
+
 volumes:
   postgres-data:
   minio-data:
+  cameri-storage:

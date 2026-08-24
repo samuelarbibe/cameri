@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { RECORD_KEY_HEADER } from "@cameri/contract/constants";
-import { recordKeys, type Database } from "@cameri/db";
+import { RECORD_KEY_HEADER } from "@camerihq/contract/constants";
+import { recordKeys, type Database } from "@camerihq/db";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { HTTPException } from "hono/http-exception";

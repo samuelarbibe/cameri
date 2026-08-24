@@ -1,5 +1,5 @@
 {
-  "name": "@cameri/playwright-reporter",
+  "name": "@camerihq/playwright-reporter",
   "version": "0.0.0",
   "description": "Playwright reporter that streams results to a Cameri server",
   "license": "MIT",
@@ -15,8 +15,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelarbibe/cameri.git",
+    "directory": "packages/reporter"
+  },
+  "homepage": "https://github.com/samuelarbibe/cameri/tree/main/packages/reporter#readme",
+  "bugs": "https://github.com/samuelarbibe/cameri/issues",
   "engines": {
     "node": ">=20.10"
   },
@@ -39,7 +48,7 @@
     "ci"
   ],
   "devDependencies": {
-    "@cameri/contract": "workspace:*",
+    "@camerihq/contract": "workspace:*",
     "@playwright/test": "^1.62.1"
   }
 }

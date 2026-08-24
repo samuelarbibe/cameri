@@ -1,4 +1,11 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
 /**
  * Symmetric encryption for outbound credentials.
@@ -81,6 +88,59 @@ export function createCipher(key: Buffer | null): Cipher {
         decipher.update(Buffer.from(body, "base64")),
         decipher.final(),
       ]).toString("utf8");
+    },
+  };
+}
+
+/**
+ * A signed, expiring capability — currently only "you may write this blob".
+ *
+ * Separate from `Cipher` because nothing here needs to be reversible: the
+ * server hands out a URL and later has to recognise its own signature on it.
+ */
+export interface Signer {
+  /** Returns the expiry and signature to hang off a URL. */
+  sign(payload: string, ttlMs: number): { exp: number; sig: string };
+  verify(payload: string, exp: string | undefined, sig: string | undefined): boolean;
+}
+
+/**
+ * Derives the signing key rather than using the master directly.
+ *
+ * The same bytes should not both encrypt GitLab tokens and sign URLs: one key,
+ * one job, so that a weakness in how signatures are used can never be turned
+ * into anything that touches a stored credential.
+ *
+ * With no master key configured the signer falls back to random bytes, which is
+ * correct for development and deliberately awkward beyond it — the URLs stop
+ * verifying across a restart or a second replica, which is exactly the sort of
+ * thing that gets noticed before it gets deployed.
+ */
+export function createSigner(master: Buffer | null, purpose: string): Signer {
+  const key = master
+    ? Buffer.from(hkdfSync("sha256", master, Buffer.alloc(0), `cameri:${purpose}:v1`, KEY_BYTES))
+    : randomBytes(KEY_BYTES);
+
+  const mac = (payload: string, exp: number): string =>
+    createHmac("sha256", key).update(`${payload}\n${exp}`).digest("base64url");
+
+  return {
+    sign(payload, ttlMs) {
+      const exp = Math.floor((Date.now() + ttlMs) / 1000);
+      return { exp, sig: mac(payload, exp) };
+    },
+
+    verify(payload, exp, sig) {
+      if (!exp || !sig) return false;
+
+      const deadline = Number(exp);
+      if (!Number.isSafeInteger(deadline) || deadline * 1000 < Date.now()) return false;
+
+      // Compare as bytes of equal length: `timingSafeEqual` throws on a length
+      // mismatch, which would itself leak the length of the real signature.
+      const expected = Buffer.from(mac(payload, deadline));
+      const actual = Buffer.from(sig);
+      return expected.length === actual.length && timingSafeEqual(expected, actual);
     },
   };
 }

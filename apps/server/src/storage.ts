@@ -3,6 +3,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
+import type { Signer } from "./crypto.ts";
 import type { Env } from "./env.ts";
 
 export interface PresignedUpload {
@@ -32,12 +33,32 @@ export interface Storage {
   write?(key: string, body: Readable): Promise<void>;
   read?(key: string): Promise<Readable>;
   size?(key: string): Promise<number>;
+  /** Whether this server issued the upload URL a request is presenting. */
+  verifyUpload?(key: string, query: Record<string, string>): boolean;
 }
 
 /**
- * Development driver: writes under a local directory and hands back a URL
- * pointing at this server's own blob endpoint. Not for production — there is no
- * signature, so anyone who can reach the server can write blobs.
+ * How long an upload URL stays valid.
+ *
+ * Generous, because it is handed out when results are reported and spent when
+ * the shard has finished writing a trace that may be hundreds of megabytes on a
+ * CI runner with a slow disk. Short enough that a URL leaked through a log is
+ * not a standing invitation.
+ */
+const UPLOAD_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Writes attachment bytes to a local directory, served back by this server's
+ * own blob endpoint.
+ *
+ * Upload URLs are signed: without that, `/api/v1/blobs/*` would be an
+ * unauthenticated write to anyone who could reach the server — enough to
+ * overwrite another project's trace with anything at all, or to fill the disk.
+ *
+ * Downloads are deliberately *not* signed. The Playwright trace viewer fetches
+ * them cross-origin and uncredentialed, and every read path in cameri is open
+ * anyway, so a signature there would cost a feature and buy nothing until the
+ * dashboard itself has authentication.
  */
 export class LocalStorage implements Storage {
   private readonly root: string;
@@ -45,6 +66,7 @@ export class LocalStorage implements Storage {
   constructor(
     private readonly publicUrl: string,
     dir: string,
+    private readonly signer: Signer,
   ) {
     this.root = resolve(dir);
   }
@@ -55,10 +77,15 @@ export class LocalStorage implements Storage {
   }
 
   async presignUpload(key: string, contentType: string): Promise<PresignedUpload> {
+    const { exp, sig } = this.signer.sign(key, UPLOAD_TTL_MS);
     return {
-      uploadUrl: `${this.publicUrl}/api/v1/blobs/${encodeURI(key)}`,
+      uploadUrl: `${this.publicUrl}/api/v1/blobs/${encodeURI(key)}?exp=${exp}&sig=${sig}`,
       headers: { "content-type": contentType },
     };
+  }
+
+  verifyUpload(key: string, query: Record<string, string>): boolean {
+    return this.signer.verify(key, query.exp, query.sig);
   }
 
   async downloadUrl(key: string): Promise<string> {
@@ -91,10 +118,10 @@ export class LocalStorage implements Storage {
   }
 }
 
-export function createStorage(env: Env): Storage {
+export function createStorage(env: Env, signer: Signer): Storage {
   if (env.STORAGE_DRIVER === "s3") {
     // TODO: @aws-sdk/s3-request-presigner against S3 or MinIO.
     throw new Error("the s3 storage driver is not implemented yet");
   }
-  return new LocalStorage(env.PUBLIC_URL, env.STORAGE_LOCAL_DIR);
+  return new LocalStorage(env.PUBLIC_URL, env.STORAGE_LOCAL_DIR, signer);
 }

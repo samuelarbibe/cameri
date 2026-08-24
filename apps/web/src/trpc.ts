@@ -1,6 +1,6 @@
 import { createTRPCClient, httpBatchLink, type TRPCClient } from "@trpc/client";
 // Type-only: the router never ships to the browser, but its shape does.
-import type { AppRouter } from "@cameri/server/router";
+import type { AppRouter } from "@camerihq/server/router";
 
 /**
  * The only place the client learns the API's shape. Everything downstream —

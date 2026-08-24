@@ -6,7 +6,7 @@ import type {
   TestAttempt,
   TestStatus,
   TestStep,
-} from "@cameri/contract";
+} from "@camerihq/contract";
 import type {
   FullConfig,
   FullResult,
@@ -23,7 +23,7 @@ import {
   detectMergeRequest,
   detectRunKey,
   localRunKey,
-} from "@cameri/contract/ci";
+} from "@camerihq/contract/ci";
 import { IngestClient } from "./client.ts";
 import {
   describeDisabled,

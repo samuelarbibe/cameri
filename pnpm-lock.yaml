@@ -29,13 +29,13 @@ importers:
 
   apps/server:
     dependencies:
-      '@cameri/contract':
+      '@camerihq/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cameri/core':
+      '@camerihq/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@cameri/db':
+      '@camerihq/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@hono/node-server':
@@ -106,7 +106,7 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
     devDependencies:
-      '@cameri/server':
+      '@camerihq/server':
         specifier: workspace:*
         version: link:../server
       '@tailwindcss/vite':
@@ -133,15 +133,16 @@ importers:
 
   packages/cli:
     dependencies:
-      '@cameri/contract':
-        specifier: workspace:*
-        version: link:../contract
       commander:
         specifier: ^15.0.0
         version: 15.0.0
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
+    devDependencies:
+      '@camerihq/contract':
+        specifier: workspace:*
+        version: link:../contract
 
   packages/contract:
     dependencies:
@@ -151,7 +152,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@cameri/contract':
+      '@camerihq/contract':
         specifier: workspace:*
         version: link:../contract
     devDependencies:
@@ -161,7 +162,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@cameri/contract':
+      '@camerihq/contract':
         specifier: workspace:*
         version: link:../contract
       dotenv:
@@ -189,7 +190,7 @@ importers:
 
   packages/reporter:
     devDependencies:
-      '@cameri/contract':
+      '@camerihq/contract':
         specifier: workspace:*
         version: link:../contract
       '@playwright/test':

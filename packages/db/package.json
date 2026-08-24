@@ -1,5 +1,5 @@
 {
-  "name": "@cameri/db",
+  "name": "@camerihq/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -26,7 +26,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@cameri/contract": "workspace:*",
+    "@camerihq/contract": "workspace:*",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",

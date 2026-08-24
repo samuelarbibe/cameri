@@ -14,8 +14,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelarbibe/cameri.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/samuelarbibe/cameri/tree/main/packages/cli#readme",
+  "bugs": "https://github.com/samuelarbibe/cameri/issues",
   "engines": {
     "node": ">=20.10"
   },
@@ -35,8 +44,10 @@
     "cameri"
   ],
   "dependencies": {
-    "@cameri/contract": "workspace:*",
     "commander": "^15.0.0",
     "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@camerihq/contract": "workspace:*"
   }
 }

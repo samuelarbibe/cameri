@@ -5,13 +5,14 @@ import {
   detectGitContext,
   detectRunKey,
   localRunKey,
-} from "@cameri/contract/ci";
-import { INGEST_API_VERSION } from "@cameri/contract/constants";
+} from "@camerihq/contract/ci";
+import { INGEST_API_VERSION } from "@camerihq/contract/constants";
 import { Command } from "commander";
 import pc from "picocolors";
 
 declare const __CAMERI_VERSION__: string;
-const VERSION = typeof __CAMERI_VERSION__ === "string" ? __CAMERI_VERSION__ : "0.0.0-dev";
+const VERSION =
+  typeof __CAMERI_VERSION__ === "string" ? __CAMERI_VERSION__ : "0.0.0-dev";
 
 const program = new Command();
 
@@ -31,7 +32,12 @@ program
   .action(
     (
       command: string[],
-      options: { key?: string; server?: string; runKey?: string; shards?: number },
+      options: {
+        key?: string;
+        server?: string;
+        runKey?: string;
+        shards?: number;
+      },
     ) => {
       const recordKey = options.key ?? process.env.CAMERI_RECORD_KEY;
       const server = options.server ?? process.env.CAMERI_SERVER_URL;
@@ -43,14 +49,19 @@ program
       // Resolved once here so every process in this shard agrees, and so the
       // value is visible in `cameri info` output when debugging CI.
       const runKey =
-        options.runKey ?? process.env.CAMERI_RUN_KEY ?? detectRunKey() ?? localRunKey();
+        options.runKey ??
+        process.env.CAMERI_RUN_KEY ??
+        detectRunKey() ??
+        localRunKey();
 
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         CAMERI_RUN_KEY: runKey,
         ...(recordKey ? { CAMERI_RECORD_KEY: recordKey } : {}),
         ...(server ? { CAMERI_SERVER_URL: server } : {}),
-        ...(options.shards ? { CAMERI_EXPECTED_SHARDS: String(options.shards) } : {}),
+        ...(options.shards
+          ? { CAMERI_EXPECTED_SHARDS: String(options.shards) }
+          : {}),
       };
 
       const [bin, ...args] = command;
@@ -59,7 +70,11 @@ program
         process.exit(1);
       }
 
-      const child = spawn(bin, args, { stdio: "inherit", env, shell: process.platform === "win32" });
+      const child = spawn(bin, args, {
+        stdio: "inherit",
+        env,
+        shell: process.platform === "win32",
+      });
 
       // Forward the child's fate verbatim: the CLI must never turn a red test
       // run green, or a green one red.
@@ -85,7 +100,10 @@ program
     const rows: Array<[string, string]> = [
       ["api version", INGEST_API_VERSION],
       ["server", process.env.CAMERI_SERVER_URL ?? pc.dim("unset")],
-      ["record key", process.env.CAMERI_RECORD_KEY ? pc.green("set") : pc.red("unset")],
+      [
+        "record key",
+        process.env.CAMERI_RECORD_KEY ? pc.green("set") : pc.red("unset"),
+      ],
       ["run key", runKey ?? pc.yellow("not detected (would use a local key)")],
       ["ci provider", ci.provider ?? "-"],
       ["build url", ci.buildUrl ?? "-"],

@@ -1,4 +1,4 @@
-import type { TestAttempt, TestStatus } from "@cameri/contract";
+import type { TestAttempt, TestStatus } from "@camerihq/contract";
 
 /** The subset of an attempt the flake rules actually need. */
 export interface AttemptLike {

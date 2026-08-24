@@ -5,9 +5,9 @@
  * hand-written, a column rename is a type error in the UI instead of a runtime
  * surprise — and there is nothing to keep in sync by hand.
  *
- * Note the deliberate asymmetry with `@cameri/contract`:
+ * Note the deliberate asymmetry with `@camerihq/contract`:
  *
- *   ingest wire DTOs  →  hand-written in @cameri/contract  (public, versioned)
+ *   ingest wire DTOs  →  hand-written in @camerihq/contract  (public, versioned)
  *   read models       →  generated from the schema here    (internal, free to move)
  *
  * The ingest DTOs are not generated on purpose. They are a published API
