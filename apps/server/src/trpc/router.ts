@@ -19,7 +19,12 @@ import { z } from "zod";
 import type { AppContext } from "../context.ts";
 import { createCipher, tokenHint } from "../crypto.ts";
 import { GitLabClient } from "../integrations/gitlab.ts";
-import { publicProcedure, router } from "./trpc.ts";
+import {
+  assertReachableIntegrationUrl,
+  BlockedIntegrationUrlError,
+  parseAllowedHosts,
+} from "../integrations/url-guard.ts";
+import { adminProcedure, isAdmin, publicProcedure, router } from "./trpc.ts";
 
 /**
  * Dashboard API.
@@ -31,6 +36,19 @@ import { publicProcedure, router } from "./trpc.ts";
  */
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, at: new Date().toISOString() })),
+
+  /**
+   * Whether this caller may change anything, and whether anyone can.
+   *
+   * Public on purpose: it reveals only that the server has a lock fitted, which
+   * the settings page has to know before it can offer the keyhole.
+   */
+  admin: router({
+    status: publicProcedure.query(({ ctx }) => ({
+      configured: Boolean(ctx.app.env.CAMERI_ADMIN_TOKEN),
+      unlocked: isAdmin(ctx),
+    })),
+  }),
 
   projects: router({
     list: publicProcedure.query(({ ctx }) =>
@@ -542,7 +560,7 @@ export const appRouter = router({
           .where(eq(integrations.projectId, project.id));
       }),
 
-    save: publicProcedure
+    save: adminProcedure
       .input(
         z.object({
           projectSlug: z.string(),
@@ -553,8 +571,20 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ ctx, input }) => {
-        const { db, encryptionKey } = ctx.app;
+        const { db, encryptionKey, env } = ctx.app;
         const project = await requireProject(db, input.projectSlug);
+
+        // Before anything connects: this URL decides where the server points
+        // itself, and it arrived in a request body.
+        try {
+          await assertReachableIntegrationUrl(
+            input.baseUrl,
+            parseAllowedHosts(env.CAMERI_INTEGRATION_HOSTS),
+          );
+        } catch (error) {
+          if (!(error instanceof BlockedIntegrationUrlError)) throw error;
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
 
         // Fail before storing, not after: a token that cannot reach GitLab is
         // worth rejecting at the point someone can still fix the typo.
@@ -590,7 +620,7 @@ export const appRouter = router({
         return { ok: true };
       }),
 
-    remove: publicProcedure
+    remove: adminProcedure
       .input(z.object({ projectSlug: z.string(), provider: z.literal("gitlab") }))
       .mutation(async ({ ctx, input }) => {
         const project = await requireProject(ctx.app.db, input.projectSlug);
