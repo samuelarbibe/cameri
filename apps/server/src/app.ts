@@ -54,7 +54,7 @@ export function createApp(app: AppContext) {
       endpoint: "/trpc",
       req: c.req.raw,
       router: appRouter,
-      createContext: () => ({ app }),
+      createContext: () => ({ app, headers: c.req.raw.headers }),
     }),
   );
 

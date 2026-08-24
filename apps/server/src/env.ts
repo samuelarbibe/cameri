@@ -49,6 +49,24 @@ const envSchema = z.object({
    * one it cannot protect.
    */
   CAMERI_ENCRYPTION_KEY: z.string().optional(),
+  /**
+   * Shared secret for the handful of dashboard calls that change something.
+   *
+   * Reading cameri is open by design — a test report nobody can see is not a
+   * report. Writing is not: connecting a GitLab account stores a credential
+   * this server will later spend, so it asks who is calling. Unset means those
+   * routes are refused outright rather than left open.
+   */
+  CAMERI_ADMIN_TOKEN: z.string().min(16).optional(),
+  /**
+   * Hostnames an integration may point at, comma separated.
+   *
+   * Unset, cameri will only connect to a public address, which is right for
+   * gitlab.com and stops the server being used to reach things the caller
+   * cannot. Naming your own instance here is what makes a GitLab on a private
+   * network reachable — see `integrations/url-guard.ts`.
+   */
+  CAMERI_INTEGRATION_HOSTS: z.string().optional(),
   /** Where attachment bytes land. `local` is for development only. */
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default("./.cameri-storage"),

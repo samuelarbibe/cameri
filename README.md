@@ -53,6 +53,9 @@ services:
       # tokens. Skip it and the server still starts, but every outstanding
       # upload URL stops verifying at the next restart.
       CAMERI_ENCRYPTION_KEY: ${CAMERI_ENCRYPTION_KEY:?generate one}
+      # Required before anyone can change a project's settings. Reading is
+      # open; connecting a GitLab account is not.
+      CAMERI_ADMIN_TOKEN: ${CAMERI_ADMIN_TOKEN:?generate one}
     volumes:
       # Attachment bytes on the default storage driver. Losing this volume
       # means losing every trace and video ever uploaded.
@@ -208,6 +211,29 @@ and never leaves the server again — the dashboard only ever sees a hint of it.
 Without an encryption key configured, cameri refuses to store the token at all
 rather than keeping one it cannot protect.
 
+Connecting one also needs `CAMERI_ADMIN_TOKEN`. Reading cameri is open — a test
+report nobody can see is not a report — but storing a credential the server
+will later spend is not something an anonymous visitor gets to do, so the
+settings page asks for that token before it will accept a change. Generate one
+the same way, and hold on to it:
+
+```sh
+CAMERI_ADMIN_TOKEN=$(node -e \
+  "console.log(require('crypto').randomBytes(32).toString('base64url'))")
+```
+
+By default cameri will only connect an integration to a **public** address. A
+self-hosted GitLab is usually on the private network the server is sitting in,
+so name it explicitly and cameri will trust that host and no other:
+
+```yaml
+CAMERI_INTEGRATION_HOSTS: gitlab.internal,gitlab.example.com
+```
+
+That list is not decoration. Without it, an instance URL is a value someone
+else typed that this server then connects to from inside your network — which
+is a way to reach your metadata endpoint, not a feature.
+
 ## Configuration
 
 `DATABASE_URL` is the only required variable; everything else has a default.
@@ -227,6 +253,8 @@ or malformed.
 | `DB_MIGRATE_ON_BOOT` | `true` | apply pending migrations at startup |
 | `MIGRATIONS_DIR` | the repo's `packages/db/drizzle` | only needed when the SQL is not where the code expects it — the image sets it |
 | `CAMERI_ENCRYPTION_KEY` | — | 32 bytes of base64. Signs upload URLs and encrypts integration tokens |
+| `CAMERI_ADMIN_TOKEN` | — | shared secret required to change a project's settings. Unset means those calls are refused |
+| `CAMERI_INTEGRATION_HOSTS` | — | comma-separated hosts an integration may point at. Unset means public addresses only |
 | `STORAGE_DRIVER` | `local` | `local` \| `s3` |
 | `STORAGE_LOCAL_DIR` | `./.cameri-storage` | `/data` in the image |
 | `S3_BUCKET` / `S3_REGION` / `S3_ENDPOINT` | — | `s3` driver only, and not implemented yet |

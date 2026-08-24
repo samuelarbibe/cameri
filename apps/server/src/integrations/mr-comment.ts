@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { AppContext } from "../context.ts";
 import { createCipher } from "../crypto.ts";
 import { GitLabClient } from "./gitlab.ts";
+import { assertReachableIntegrationUrl, parseAllowedHosts } from "./url-guard.ts";
 
 /**
  * Keeps one comment on a merge request in step with a run.
@@ -163,12 +164,19 @@ async function sync(app: AppContext, runId: string): Promise<void> {
 
   if (!integration || !integration.enabled) return;
 
-  const baseUrl = integration.baseUrl || run.mrServerUrl;
+  // Only ever the URL an administrator configured. This used to fall back to
+  // `run.mrServerUrl`, which arrives in the ingest payload — so anyone holding
+  // a record key could have named the host that the decrypted token below was
+  // then presented to. A record key is a write credential for test results; it
+  // is not permission to be told the GitLab token.
+  const { baseUrl } = integration;
   if (!baseUrl) {
-    throw new Error(
-      "no GitLab base URL — set one on the integration, or run on a GitLab CI that reports CI_SERVER_URL",
-    );
+    throw new Error("no GitLab base URL — set one on the integration in project settings");
   }
+
+  // Re-checked at the point of use, not just when it was saved: the allowlist
+  // may have tightened since, and DNS certainly may have moved.
+  await assertReachableIntegrationUrl(baseUrl, parseAllowedHosts(env.CAMERI_INTEGRATION_HOSTS));
 
   const token = createCipher(app.encryptionKey).decrypt(integration.tokenCipher);
   const client = new GitLabClient({ baseUrl, token });
