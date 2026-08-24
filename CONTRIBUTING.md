@@ -100,30 +100,44 @@ gh workflow run release.yml -f version=minor
 
 or hit **Run workflow** on the Actions tab and pick `patch`, `minor`, `major`
 or an explicit version. [`.github/workflows/release.yml`](.github/workflows/release.yml)
-then does the whole thing in one job:
+is four jobs, and nothing ships unless the one in front of it passed:
 
 ```
-  typecheck + test ──► nothing gets a version until these pass
-         │
-         ▼
-  set-version.mjs ──► one number across server, reporter and CLI
-         │
-         ▼
-  build ──► commit "chore: release vX.Y.Z", tag vX.Y.Z, push to main
-         │
-         ▼
-  pnpm publish -r ──► npm, authenticated by OIDC
-         │
-         ▼
-  buildx ──► ghcr.io, tagged latest / X.Y / X.Y.Z / sha
-         │
-         ▼
-  gh release create --generate-notes
+  test ─────► the same suite pull requests run, unchanged
+    │
+    ▼
+  publish ──► set-version.mjs: one number across server, reporter and CLI
+    │         commit "chore: release vX.Y.Z", tag it, push to main
+    │         pnpm publish -r ──► npm, authenticated by OIDC
+    ▼
+  image ────► buildx from the tag ──► ghcr.io
+    │         tagged latest / X.Y / X.Y.Z / sha
+    ▼
+  announce ─► gh release create --generate-notes
 ```
+
+`test` is [`test.yml`](.github/workflows/test.yml), called as a reusable
+workflow by both this and [`ci.yml`](.github/workflows/ci.yml), so a release
+runs exactly what a pull request runs — including the Docker build — rather
+than a second definition of "the tests" that drifts from the first.
+
+`image` and `announce` check out the tag `publish` just created, not the commit
+the workflow started from: by then the version bump is a commit that did not
+exist when you pressed the button.
 
 The release notes are generated from the pull requests merged since the last
 tag, which is the changelog nobody has to remember to write. Squash-merge with
 a sensible PR title and it reads properly.
+
+### Protecting `main`
+
+The checks that gate a pull request are `test / check (20.10)`,
+`test / check (22)`, `test / web` and `test / image`.
+
+One wrinkle if you add them as required: the `publish` job pushes the version
+commit straight to `main`, and a required check blocks a direct push just as it
+blocks a merge. The ruleset needs a bypass for the GitHub Actions app
+(integration `15368`) or releases will fail at the push.
 
 The three released artifacts share one version, set by
 [`scripts/set-version.mjs`](scripts/set-version.mjs). A server-only change
