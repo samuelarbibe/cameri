@@ -1,6 +1,6 @@
 {
   "name": "@camerihq/playwright-reporter",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Playwright reporter that streams results to a Cameri server",
   "license": "MIT",
   "type": "module",
