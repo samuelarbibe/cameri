@@ -2,16 +2,27 @@ import { Readable } from "node:stream";
 import {
   completeShardRequestSchema,
   createRunRequestSchema,
+  planShardsRequestSchema,
   reportResultsRequestSchema,
   type CompleteShardResponse,
   type CreateRunResponse,
+  type PlanShardsResponse,
   type ReportResultsResponse,
   type RunStats,
   type UploadTarget,
 } from "@camerihq/contract";
-import { deriveRunStatus, errorSignature, isFlakyWithinRun, mergeStats } from "@camerihq/core";
+import {
+  deriveRunStatus,
+  errorSignature,
+  isFlakyWithinRun,
+  matchDurations,
+  mergeStats,
+  planShards,
+  specDigest,
+} from "@camerihq/core";
 import {
   attachments,
+  runPlans,
   runs,
   shards,
   testAttempts,
@@ -41,8 +52,88 @@ export function ingestRoutes(app: AppContext) {
   router.get("/health", (c) => c.json({ ok: true }));
 
   router.use("/runs", recordKeyAuth(app));
+  router.use("/runs/plan", recordKeyAuth(app));
   router.use("/results", recordKeyAuth(app));
   router.use("/shards/*", recordKeyAuth(app));
+
+  /**
+   * Hand a shard its slice of the suite.
+   *
+   * Registered before `/runs` only for readability — this is what a build calls
+   * first, before Playwright has started and therefore before any run exists.
+   * The plan is keyed by `runKey` alone for that reason.
+   */
+  router.post("/runs/plan", async (c) => {
+    const body = planShardsRequestSchema.parse(await c.req.json());
+    const { projectId } = c.get("project");
+
+    const digest = specDigest(body.specs);
+    const where = and(eq(runPlans.projectId, projectId), eq(runPlans.runKey, body.runKey));
+
+    // Read before write, because the overwhelmingly common case on a build with
+    // n shards is n-1 reads and one write, and a plain select is cheaper than
+    // computing a split just to throw it away on conflict.
+    let [plan] = await db.select().from(runPlans).where(where).limit(1);
+    let isNewPlan = false;
+
+    if (!plan) {
+      const history = await recentSpecDurations(db, projectId);
+      const split = planShards(
+        body.specs,
+        matchDurations(body.specs, history),
+        body.expectedShards,
+      );
+
+      [plan] = await db
+        .insert(runPlans)
+        .values({
+          projectId,
+          runKey: body.runKey,
+          shardCount: body.expectedShards,
+          specCount: new Set(body.specs).size,
+          specDigest: digest,
+          strategy: split.strategy,
+          assignments: split.assignments,
+          estimatedMs: split.estimatedMs,
+        })
+        // A conflict means another shard got here microseconds earlier. Its plan
+        // is as good as ours and, crucially, is the one every other shard will
+        // read — so drop ours and go and fetch theirs.
+        .onConflictDoNothing({ target: [runPlans.projectId, runPlans.runKey] })
+        .returning();
+
+      isNewPlan = plan !== undefined;
+      if (!plan) [plan] = await db.select().from(runPlans).where(where).limit(1);
+    }
+
+    if (!plan) throw new HTTPException(500, { message: "could not plan run" });
+
+    // The split is fixed by whoever asked first, so a caller that disagrees
+    // about the total cannot be answered. Too high an index has no slice; too
+    // low a total is worse, because slices past the caller's total exist and
+    // nobody will claim them — an answer would silently drop those specs and
+    // the build would still go green. Refuse, and name the disagreement.
+    if (body.expectedShards !== plan.shardCount) {
+      throw new HTTPException(409, {
+        message:
+          `this job says ${body.shardIndex}/${body.expectedShards} but the plan for run ` +
+          `${body.runKey} covers ${plan.shardCount} shards. Every job in the build must ` +
+          "pass the same total, or use a run key unique to this build.",
+      });
+    }
+
+    const response: PlanShardsResponse = {
+      shardIndex: body.shardIndex,
+      specs: plan.assignments[body.shardIndex - 1] ?? [],
+      shardCount: plan.shardCount,
+      totalSpecs: plan.specCount,
+      estimatedMs: plan.estimatedMs[body.shardIndex - 1] ?? 0,
+      strategy: plan.strategy,
+      specsMatch: plan.specDigest === digest,
+      isNewPlan,
+    };
+    return c.json(response, isNewPlan ? 201 : 200);
+  });
 
   /**
    * Open or join a run.
@@ -427,6 +518,70 @@ export function ingestRoutes(app: AppContext) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * How many past runs a plan is weighted by.
+ *
+ * Bounded rather than time-windowed so the query cost does not depend on how
+ * busy the project is, and small enough that the numbers still describe the
+ * suite as it is now — a spec that got twice as slow last week should show up
+ * in the split this week, not be averaged away by a month of history.
+ */
+const PLAN_HISTORY_RUNS = 20;
+
+/**
+ * Median wall time per spec file over recent runs, keyed by the file path as the
+ * reporter recorded it — an absolute path on whichever machine ran it.
+ * `matchDurations` is what reconciles that with the relative paths a client asks
+ * about.
+ *
+ * Median of per-run totals, not a mean and not a sum: one run where the whole
+ * suite sat behind a broken dependency should not decide how the next fifty
+ * builds are divided up, and a mean has no defence against that.
+ */
+async function recentSpecDurations(
+  db: AppContext["db"],
+  projectId: string,
+): Promise<Map<string, number>> {
+  const recent = db
+    .select({ id: runs.id })
+    .from(runs)
+    .where(and(eq(runs.projectId, projectId), isNotNull(runs.completedAt)))
+    .orderBy(desc(runs.createdAt))
+    .limit(PLAN_HISTORY_RUNS)
+    .as("recent");
+
+  const perRun = db
+    .select({
+      file: tests.file,
+      total: sql<number>`sum(${testAttempts.durationMs})`.as("total"),
+    })
+    .from(testAttempts)
+    .innerJoin(tests, eq(tests.id, testAttempts.testRef))
+    .innerJoin(recent, eq(recent.id, testAttempts.runId))
+    // Start markers carry no duration yet; counting them would drag every
+    // still-live spec's history towards zero.
+    .where(sql`${testAttempts.status} <> 'running'`)
+    .groupBy(testAttempts.runId, tests.file)
+    .as("per_run");
+
+  const rows = await db
+    .select({
+      file: perRun.file,
+      p50: sql<string>`percentile_cont(0.5) within group (order by ${perRun.total})`,
+    })
+    .from(perRun)
+    .groupBy(perRun.file);
+
+  const durations = new Map<string, number>();
+  for (const row of rows) {
+    // `sum` over an integer column comes back as bigint, which node-postgres
+    // hands over as a string to avoid silently losing precision.
+    const ms = Number(row.p50);
+    if (Number.isFinite(ms) && ms > 0) durations.set(row.file, ms);
+  }
+  return durations;
+}
 
 /** Extracts and validates the storage key out of a `/blobs/...` request path. */
 function blobKey(path: string): string {

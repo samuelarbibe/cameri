@@ -9,9 +9,9 @@ cameri/
 │  └─ web/          Vite + React dashboard
 └─ packages/
    ├─ reporter/     @camerihq/playwright-reporter — runs in your CI
-   ├─ cli/          @camerihq/cli — wraps a Playwright run
+   ├─ cli/          @camerihq/cli — wraps a run, and plans its shards
    ├─ contract/     wire schemas shared by every client
-   ├─ core/         flake detection, clustering, run aggregation
+   ├─ core/         flake detection, clustering, aggregation, shard planning
    └─ db/           Drizzle schema and migrations (PostgreSQL)
 ```
 
@@ -40,7 +40,7 @@ a no-op in CI and in containers. The variables themselves are documented in the
 
 ```sh
 pnpm build          # turbo, respects the dependency graph
-pnpm test           # node:test in packages/core
+pnpm test           # node:test in core, cli and server
 pnpm typecheck
 ```
 

@@ -143,6 +143,9 @@ importers:
       '@camerihq/contract':
         specifier: workspace:*
         version: link:../contract
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
 
   packages/contract:
     dependencies:

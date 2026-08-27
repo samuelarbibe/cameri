@@ -7,6 +7,12 @@ export interface CameriReporterOptions {
   runKey?: string;
   /** Total shards in this build. Falls back to Playwright's own shard config. */
   expectedShards?: number;
+  /**
+   * Which shard this process is, 1-based. Falls back to Playwright's own shard
+   * config, and is only needed when something other than `--shard` decided the
+   * split — which is exactly what `cameri run --shard` does.
+   */
+  shardIndex?: number;
   /** Explicitly turn reporting off without editing the config. */
   enabled?: boolean;
   /** Results are flushed once this many attempts are buffered. */
@@ -29,6 +35,7 @@ export interface ResolvedConfig {
   recordKey: string;
   runKey: string | undefined;
   expectedShards: number | undefined;
+  shardIndex: number | undefined;
   enabled: boolean;
   batchSize: number;
   flushIntervalMs: number;
@@ -65,6 +72,7 @@ export function resolveConfig(options: CameriReporterOptions = {}): ResolvedConf
     recordKey,
     runKey: env.CAMERI_RUN_KEY ?? options.runKey,
     expectedShards: envInt(env.CAMERI_EXPECTED_SHARDS) ?? options.expectedShards,
+    shardIndex: envInt(env.CAMERI_SHARD_INDEX) ?? options.shardIndex,
     enabled,
     batchSize: envInt(env.CAMERI_BATCH_SIZE) ?? options.batchSize ?? 50,
     flushIntervalMs: envInt(env.CAMERI_FLUSH_INTERVAL_MS) ?? options.flushIntervalMs ?? 2_000,

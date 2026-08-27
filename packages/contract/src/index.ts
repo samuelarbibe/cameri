@@ -8,6 +8,7 @@
 import { z } from "zod";
 import {
   ATTACHMENT_KINDS,
+  PLAN_STRATEGIES,
   RUN_STATUSES,
   SHARD_STATUSES,
   TEST_STATUSES,
@@ -27,6 +28,9 @@ export type ShardStatus = z.infer<typeof shardStatusSchema>;
 
 export const attachmentKindSchema = z.enum(ATTACHMENT_KINDS);
 export type AttachmentKind = z.infer<typeof attachmentKindSchema>;
+
+export const planStrategySchema = z.enum(PLAN_STRATEGIES);
+export type PlanStrategy = z.infer<typeof planStrategySchema>;
 
 export const gitContextSchema = z.object({
   branch: z.string().nullish(),
@@ -77,6 +81,59 @@ export const mergeRequestContextSchema = z.object({
   webUrl: z.string().nullish(),
 });
 export type MergeRequestContext = z.infer<typeof mergeRequestContextSchema>;
+
+/**
+ * Asks for this shard's slice of the suite, before a single test has run.
+ *
+ * Called by the CLI, not the reporter — by the time a reporter exists Playwright
+ * has already decided what to run, and the whole point is to decide it first.
+ * Every shard sends the same `runKey` and the same `specs`; the first one
+ * through computes the split and the rest read back the identical answer, which
+ * is what stops n machines from each inventing their own division of the suite.
+ */
+export const planShardsRequestSchema = z
+  .object({
+    runKey: z.string().min(1).max(200),
+    /** 1-based, matching `--shard=i/n` and `shards.shardIndex`. */
+    shardIndex: z.number().int().positive(),
+    expectedShards: z.number().int().positive(),
+    /**
+     * Every spec file this build would run, relative to Playwright's `rootDir`.
+     *
+     * Discovered rather than declared: the CLI gets these from `--list` on the
+     * user's own command, so any `--grep` or `--project` they passed has already
+     * narrowed the list, and the plan covers exactly what would have run.
+     */
+    specs: z.array(z.string().min(1)).min(1).max(20_000),
+  })
+  // `9/3` is not a shard, and answering it would mean inventing a slice.
+  .refine((body) => body.shardIndex <= body.expectedShards, {
+    message: "shardIndex must not exceed expectedShards",
+    path: ["shardIndex"],
+  });
+
+export type PlanShardsRequest = z.infer<typeof planShardsRequestSchema>;
+
+export const planShardsResponseSchema = z.object({
+  shardIndex: z.number().int().positive(),
+  /** What this shard should run. Empty is legal: more shards than spec files. */
+  specs: z.array(z.string()),
+  /** Shards the stored plan covers, which is what the *first* caller claimed. */
+  shardCount: z.number().int().positive(),
+  totalSpecs: z.number().int().nonnegative(),
+  /** Predicted wall time for this shard. Zero under the `even` strategy. */
+  estimatedMs: z.number().nonnegative(),
+  strategy: planStrategySchema,
+  /**
+   * False when this shard's spec list is not the one the plan was built from —
+   * shards on different commits, or a flaky test-discovery step. The assignment
+   * is still returned, because a shard inventing its own split would be worse.
+   */
+  specsMatch: z.boolean(),
+  /** True when this call computed the plan rather than reading one back. */
+  isNewPlan: z.boolean(),
+});
+export type PlanShardsResponse = z.infer<typeof planShardsResponseSchema>;
 
 /**
  * Opens (or joins) a run. Every shard calls this; the first one through creates

@@ -35,3 +35,10 @@ export const RUN_STATUSES = [
 export const SHARD_STATUSES = ["running", "completed", "failed", "abandoned"] as const;
 
 export const ATTACHMENT_KINDS = ["trace", "screenshot", "video", "log", "other"] as const;
+
+export const PLAN_STRATEGIES = [
+  /** Weighted by how long each spec took in recent runs. */
+  "history",
+  /** No usable history for this project yet, so the split is by count alone. */
+  "even",
+] as const;
