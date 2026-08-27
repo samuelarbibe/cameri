@@ -87,7 +87,11 @@ export default class CameriReporter implements Reporter {
 
     const runKey = this.config.runKey ?? detectRunKey() ?? localRunKey();
     const expectedShards = this.config.expectedShards ?? config.shard?.total ?? 1;
-    const shardIndex = config.shard?.current ?? 1;
+    // `config.shard` is null under `cameri run --shard`, because the CLI splits
+    // the suite itself and hands Playwright a file list rather than `--shard`.
+    // Without the override every machine would call itself shard 1 and they
+    // would all write to the same shard row.
+    const shardIndex = this.config.shardIndex ?? config.shard?.current ?? 1;
 
     this.ready = this.guard("open run", async () => {
       const response = await this.client.createRun({

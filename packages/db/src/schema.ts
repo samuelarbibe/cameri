@@ -1,5 +1,6 @@
 import {
   ATTACHMENT_KINDS,
+  PLAN_STRATEGIES,
   RUN_STATUSES,
   SHARD_STATUSES,
   TEST_STATUSES,
@@ -25,6 +26,7 @@ export const testStatusEnum = pgEnum("test_status", [...TEST_STATUSES]);
 export const runStatusEnum = pgEnum("run_status", [...RUN_STATUSES]);
 export const shardStatusEnum = pgEnum("shard_status", [...SHARD_STATUSES]);
 export const attachmentKindEnum = pgEnum("attachment_kind", [...ATTACHMENT_KINDS]);
+export const planStrategyEnum = pgEnum("plan_strategy", [...PLAN_STRATEGIES]);
 export const integrationProviderEnum = pgEnum("integration_provider", ["gitlab"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -192,6 +194,41 @@ export const shards = pgTable(
 );
 
 /**
+ * How one build's spec files were divided between its shards.
+ *
+ * Keyed by `runKey` and not by run id, on purpose: the plan is asked for before
+ * Playwright starts, so at that moment there is no run and no shard to hang it
+ * off. The (project, runKey) unique index does the same job here as it does on
+ * `runs` — the first shard to ask computes the split, everyone else loses the
+ * insert and reads the winner's row, and n machines end up with one plan.
+ *
+ * One row per build, written once and never updated. That makes it a log, and
+ * it is worth keeping: "why did shard 3 take twelve minutes" is answerable
+ * afterwards only if what shard 3 was given still exists.
+ */
+export const runPlans = pgTable(
+  "run_plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    runKey: text("run_key").notNull(),
+    shardCount: integer("shard_count").notNull(),
+    specCount: integer("spec_count").notNull(),
+    /** sha256 of the sorted spec list, to catch shards that disagree about it. */
+    specDigest: text("spec_digest").notNull(),
+    strategy: planStrategyEnum("strategy").notNull(),
+    /** `assignments[i]` is the spec list for shard `i + 1`. */
+    assignments: jsonb("assignments").$type<string[][]>().notNull(),
+    /** Predicted ms per shard. Kept so the UI can show predicted against actual. */
+    estimatedMs: jsonb("estimated_ms").$type<number[]>().notNull().default([]),
+    createdAt,
+  },
+  (t) => [uniqueIndex("run_plans_project_run_key_idx").on(t.projectId, t.runKey)],
+);
+
+/**
  * Stable identity of a test across runs — this is what test history, flake rate
  * and quarantine all hang off. Playwright's `testId` is stable as long as the
  * title and file do not change; a rename starts a new history, which is a
@@ -302,6 +339,11 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   tests: many(tests),
   recordKeys: many(recordKeys),
   integrations: many(integrations),
+  runPlans: many(runPlans),
+}));
+
+export const runPlansRelations = relations(runPlans, ({ one }) => ({
+  project: one(projects, { fields: [runPlans.projectId], references: [projects.id] }),
 }));
 
 export const integrationsRelations = relations(integrations, ({ one }) => ({
@@ -341,6 +383,7 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
 export type Project = typeof projects.$inferSelect;
 export type Run = typeof runs.$inferSelect;
 export type Shard = typeof shards.$inferSelect;
+export type RunPlan = typeof runPlans.$inferSelect;
 export type Test = typeof tests.$inferSelect;
 export type TestAttemptRow = typeof testAttempts.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;

@@ -39,6 +39,7 @@ config file is committed, and CI is where the secrets and per-build values are.
 | `recordKey` | `CAMERI_RECORD_KEY` | — | project record key |
 | `runKey` | `CAMERI_RUN_KEY` | derived from CI | what makes N shards one run — see below |
 | `expectedShards` | `CAMERI_EXPECTED_SHARDS` | Playwright's `--shard` total | |
+| `shardIndex` | `CAMERI_SHARD_INDEX` | Playwright's `--shard` current | set it when something other than `--shard` split the suite — see below |
 | `enabled` | `CAMERI_ENABLED` | on when the URL and key are both set | |
 | `batchSize` | `CAMERI_BATCH_SIZE` | `50` | attempts buffered before a flush |
 | `flushIntervalMs` | `CAMERI_FLUSH_INTERVAL_MS` | `2000` | longest a result waits to be sent |
@@ -60,6 +61,13 @@ across the build. Off CI it falls back to a per-invocation local key, so two
 
 The server closes the run when the last shard reports in, or sweeps it to
 `timedOut` if a machine dies mid-run.
+
+Which shard this is comes from Playwright's `--shard`, so normally there is
+nothing to set. If something else did the splitting — a file list from
+[`cameri shard`](https://github.com/samuelarbibe/cameri/tree/main/packages/cli#cameri-shard),
+or your own — then `config.shard` is null and every machine would file its
+results as shard 1. Set `CAMERI_SHARD_INDEX` in that case. The reporter cannot
+infer it: a list of files says nothing about how many lists there were.
 
 ## What gets sent
 

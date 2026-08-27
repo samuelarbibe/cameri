@@ -176,6 +176,47 @@ or a run spawns Playwright more than once — `npx cameri run -- playwright test
 resolves the environment once and injects it, and `npx cameri info` prints what
 it detected.
 
+### Balanced sharding
+
+`--shard=3/8` splits the suite by file count, which balances the build only if
+every file costs the same. Since cameri already knows what each spec has cost on
+past runs, it can split by time instead:
+
+```sh
+LIST=$(npx playwright test --list --reporter=json)
+SPECS=$(echo "$LIST" | cameri shard "$CI_NODE_INDEX/$CI_NODE_TOTAL") || exit 1
+
+CAMERI_SHARD_INDEX=$CI_NODE_INDEX npx playwright test $SPECS
+```
+
+`cameri shard` runs nothing itself: you list what would run, it says which of it
+belongs to this machine, you invoke Playwright. The server weights each spec by
+its median over the last 20 completed runs and packs longest-first, storing the
+result under the run key so every machine in the build gets one split rather
+than its own. On a suite where one file dominates, the difference is the whole
+point:
+
+```
+  by file count      shard 1 ▓▓▓░░░░░░░  28s
+                     shard 2 ▓▓▓▓░░░░░░  37s
+                     shard 3 ▓▓▓▓▓░░░░░  55s
+                     shard 4 ▓▓▓▓▓▓▓▓▓▓ 108s   ◄── the build is this long
+
+  by duration        shard 1 ▓▓▓▓▓▓▓▓░░  80s   ◄── one 80s spec; the floor
+                     shard 2 ▓▓▓▓░░░░░░  46s
+                     shard 3 ▓▓▓▓▓░░░░░  49s
+                     shard 4 ▓▓▓▓▓░░░░░  53s
+```
+
+No history yet means an even split and real numbers by the next build. An
+unreachable server, or anything else that stops a plan being made, prints
+`--shard=i/n` and exits 0 rather than failing the build — but a job whose shard
+total disagrees with the rest of the build prints nothing and exits 1, which is
+why the `|| exit 1` above is not decoration. If you would rather not think about
+any of that, `cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright
+test` does the same thing in one command. Both, and the failure modes, are in
+the [CLI README](packages/cli/README.md#cameri-shard).
+
 ## Storage
 
 Attachment bytes never pass through the ingest API. A trace can be hundreds of

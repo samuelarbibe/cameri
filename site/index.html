@@ -89,16 +89,36 @@
         </figure>
       </section>
 
+      <!-- Icons are lucide, the set the dashboard already uses, inlined as bare
+           paths — three of them is not worth a dependency or three requests. -->
       <section class="strip">
         <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+            />
+            <path d="m3.3 7 8.7 5 8.7-5" />
+            <path d="M12 22V12" />
+          </svg>
           <h3>One container</h3>
           <p>The API and the dashboard ship in the same image, on the same origin. No proxy.</p>
         </div>
         <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+            />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
           <h3>Nothing leaves</h3>
           <p>Your traces, videos and test names stay on your infrastructure. No vendor.</p>
         </div>
         <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+            />
+          </svg>
           <h3>Never blocks CI</h3>
           <p>If cameri is unreachable the reporter shrugs and the tests decide the exit code.</p>
         </div>
@@ -132,6 +152,104 @@
               alt="A single run: 90 tests, 84 passed, 5 failed, 1 flaky, across 4 of 4 shards, with the failing assertions expanded inline per file."
             />
           </figure>
+        </article>
+
+        <!-- No screenshot on this one: it is a CLI feature, and the shape of the
+             result is the point. A chart of the numbers says it; a picture of a
+             terminal would not. -->
+        <article>
+          <div class="copy">
+            <h2>Shards that finish together</h2>
+            <div class="prose">
+              <p>
+                <code>--shard=3/8</code> splits the suite by file count, which balances the build
+                only if every file costs the same. Since cameri already knows what each spec cost
+                on the last twenty runs, it can split by time instead — and your build is only
+                ever as fast as its slowest shard.
+              </p>
+              <p>
+                <code>cameri shard</code> reads the spec list you piped in, asks the server which
+                of it belongs to this machine, and prints the arguments. It runs nothing itself.
+                Unreachable server, no history, more shards than files — it falls back to
+                Playwright's own sharding and the build carries on.
+              </p>
+            </div>
+          </div>
+          <!-- Both panels share one scale — 236 user units to 108s — or the
+               comparison would be a lie told with axes. -->
+          <div class="charts">
+            <figure class="chart">
+              <svg viewBox="0 0 340 132" role="img" aria-labelledby="by-count-title">
+                <title id="by-count-title">
+                  Split by file count: shard 1 takes 28 seconds, shard 2 takes 37, shard 3 takes
+                  55, and shard 4 takes 108 — so the build takes 108 seconds.
+                </title>
+
+                <text x="0" y="25">shard 1</text>
+                <rect class="track" x="52" y="14" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="14" width="61.2" height="14" rx="3" />
+                <text class="value" x="294" y="25">28s</text>
+
+                <text x="0" y="51">shard 2</text>
+                <rect class="track" x="52" y="40" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="40" width="80.9" height="14" rx="3" />
+                <text class="value" x="294" y="51">37s</text>
+
+                <text x="0" y="77">shard 3</text>
+                <rect class="track" x="52" y="66" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="66" width="120.2" height="14" rx="3" />
+                <text class="value" x="294" y="77">55s</text>
+
+                <text x="0" y="103">shard 4</text>
+                <rect class="track" x="52" y="92" width="236" height="14" rx="3" />
+                <rect class="bar critical" x="52" y="92" width="236" height="14" rx="3" />
+                <text class="value" x="294" y="103">108s</text>
+
+                <line class="finish" x1="288" y1="6" x2="288" y2="114" />
+                <text class="tick" x="288" y="126" text-anchor="end">build ends here</text>
+              </svg>
+              <figcaption>
+                Split by <strong>file count</strong>. Three machines sit idle waiting for the
+                fourth, and the build takes <strong>108s</strong>.
+              </figcaption>
+            </figure>
+
+            <figure class="chart">
+              <svg viewBox="0 0 340 132" role="img" aria-labelledby="by-time-title">
+                <title id="by-time-title">
+                  Split by measured duration: shard 1 takes 80 seconds, shard 2 takes 46, shard 3
+                  takes 49, and shard 4 takes 53 — so the build takes 80 seconds.
+                </title>
+
+                <text x="0" y="25">shard 1</text>
+                <rect class="track" x="52" y="14" width="236" height="14" rx="3" />
+                <rect class="bar floor" x="52" y="14" width="174.8" height="14" rx="3" />
+                <text class="value" x="294" y="25">80s</text>
+
+                <text x="0" y="51">shard 2</text>
+                <rect class="track" x="52" y="40" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="40" width="100.5" height="14" rx="3" />
+                <text class="value" x="294" y="51">46s</text>
+
+                <text x="0" y="77">shard 3</text>
+                <rect class="track" x="52" y="66" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="66" width="107.1" height="14" rx="3" />
+                <text class="value" x="294" y="77">49s</text>
+
+                <text x="0" y="103">shard 4</text>
+                <rect class="track" x="52" y="92" width="236" height="14" rx="3" />
+                <rect class="bar" x="52" y="92" width="115.9" height="14" rx="3" />
+                <text class="value" x="294" y="103">53s</text>
+
+                <line class="finish" x1="226.8" y1="6" x2="226.8" y2="114" />
+                <text class="tick" x="226.8" y="126" text-anchor="middle">build ends here</text>
+              </svg>
+              <figcaption>
+                Split by <strong>measured duration</strong>. <strong>80s</strong> — the length of
+                the one longest spec, and nothing below that is reachable.
+              </figcaption>
+            </figure>
+          </div>
         </article>
 
         <article>
@@ -220,6 +338,63 @@
           Two moving parts: a server you host, and a reporter you add to
           <code>playwright.config.ts</code>.
         </p>
+
+        <figure class="diagram">
+          <div class="track">
+            <svg viewBox="0 0 700 124" role="img" aria-labelledby="arch-title">
+              <title id="arch-title">
+                Every shard of your CI build posts results to one cameri container, which serves
+                both the ingest API and the dashboard, and writes to a PostgreSQL database and a
+                storage volume you own.
+              </title>
+
+              <defs>
+                <marker
+                  id="arrow-flow"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path class="arrowhead" d="M0 1 7 4 0 7z" />
+                </marker>
+              </defs>
+
+              <text class="zone" x="0" y="9">your CI</text>
+              <rect class="node" x="0" y="24" width="142" height="20" rx="4" />
+              <text x="71" y="38" text-anchor="middle">shard 1</text>
+              <rect class="node" x="0" y="48" width="142" height="20" rx="4" />
+              <text x="71" y="62" text-anchor="middle">shard 2</text>
+              <rect class="node" x="0" y="72" width="142" height="20" rx="4" />
+              <text x="71" y="86" text-anchor="middle">shard 3</text>
+              <rect class="node" x="0" y="96" width="142" height="20" rx="4" />
+              <text x="71" y="110" text-anchor="middle">shard 4</text>
+
+              <text class="edge" x="198" y="61" text-anchor="middle">results, live</text>
+              <line class="flow" x1="150" y1="70" x2="246" y2="70" marker-end="url(#arrow-flow)" />
+
+              <text class="zone" x="354" y="9" text-anchor="middle">one container</text>
+              <rect class="hub" x="254" y="24" width="200" height="92" rx="8" />
+              <text class="name" x="354" y="55" text-anchor="middle">cameri</text>
+              <text x="354" y="73" text-anchor="middle">API + dashboard</text>
+              <rect class="node" x="324" y="83" width="60" height="18" rx="4" />
+              <text class="edge" x="354" y="95" text-anchor="middle">:3000</text>
+
+              <text class="edge" x="504" y="45" text-anchor="middle">SQL</text>
+              <line class="flow" x1="462" y1="52" x2="546" y2="52" marker-end="url(#arrow-flow)" />
+              <text class="edge" x="504" y="93" text-anchor="middle">traces</text>
+              <line class="flow" x1="462" y1="100" x2="546" y2="100" marker-end="url(#arrow-flow)" />
+
+              <text class="zone" x="700" y="9" text-anchor="end">your infrastructure</text>
+              <rect class="node" x="554" y="34" width="146" height="36" rx="4" />
+              <text x="627" y="56" text-anchor="middle">PostgreSQL</text>
+              <rect class="node" x="554" y="82" width="146" height="36" rx="4" />
+              <text x="627" y="104" text-anchor="middle">/data volume</text>
+            </svg>
+          </div>
+        </figure>
 
         <ol class="steps">
           <li>
