@@ -2,8 +2,8 @@
 
 Command line companion to [cameri](https://github.com/samuelarbibe/cameri), the
 self-hostable Playwright reporter. It resolves the reporting environment once
-and hands it to your test command, and tells you what it detected when CI
-disagrees with you.
+and hands it to your test command, splits your shards by what each spec has
+actually cost, and tells you what it detected when CI disagrees with you.
 
 The package is scoped; the command it installs is not.
 
@@ -43,16 +43,43 @@ unreported.
 It forwards the child's exit code and signals verbatim. A test wrapper that can
 turn a red run green, or a green one red, is worse than no wrapper.
 
-## `cameri shard`
+### `--shard`, and balanced sharding in one command
 
 `--shard=3/8` gives a machine an eighth of the *files*. That is an eighth of the
 *time* only if every file costs the same, and no suite works like that: one long
 checkout journey among forty quick specs means the build takes as long as
 whichever shard drew the long one, while the rest sit idle.
 
-`cameri shard` splits by measured duration instead. It runs no tests and spawns
-nothing — it reads a spec list on stdin, asks the server which of it belongs to
-this machine, and prints Playwright arguments on stdout for you to pass on:
+Hand the shard to cameri instead of to Playwright and it splits by measured
+duration:
+
+```diff
+- npx playwright test --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL
++ cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright test
+```
+
+It runs your command twice: once with `--list --reporter=json` appended to
+discover what would run, then for real with the plan's files appended as
+filters. Reporting is switched off for the discovery pass, so it cannot open a
+run that never gets any results. `CAMERI_SHARD_INDEX` is set for you, the exit
+code is still forwarded verbatim, and anything that stops a plan being made
+falls back to Playwright's own `--shard=i/n`. The server decides the split the
+same way for both forms — [how the split is chosen](#how-the-split-is-chosen).
+
+Use `--shards <n>` instead when Playwright's own `--shard` is doing the
+splitting: it tells the server how many shards to expect without changing how
+the suite is divided.
+
+The cost is that cameri decides how discovery is invoked. When that first call
+should be yours — because it needs `--project`, `--grep`, or a config flag —
+use `cameri shard`.
+
+## `cameri shard`
+
+The same split, with the discovery step handed back to you. It runs no tests and
+spawns nothing: it reads a spec list on stdin, asks the server which of it
+belongs to this machine, and prints Playwright arguments on stdout for you to
+pass on:
 
 ```sh
 LIST=$(npx playwright test --list --reporter=json)
@@ -118,9 +145,10 @@ different moments get one split rather than eight opinions. That is also why
 every job must pass the same total, and why a job that disagrees is refused
 rather than answered.
 
-Set `CAMERI_SHARD_INDEX` when you invoke Playwright. Playwright is not being
-told about the shard any more, so it is what the reporter reads to tell the
-machines apart; without it every one of them files results as shard 1.
+Set `CAMERI_SHARD_INDEX` when you invoke Playwright yourself. Playwright is not
+being told about the shard any more, so it is what the reporter reads to tell
+the machines apart; without it every one of them files results as shard 1.
+`cameri run --shard` sets it for you, being the one invoking Playwright.
 
 ### On GitHub Actions
 
@@ -158,18 +186,18 @@ nothing.
 
 ### Or let cameri drive
 
-`cameri run --shard` does all of the above in one command, spawning `--list`
-itself and appending the result to your command:
+Where that first `--list` call does not need to be yours, the whole step
+collapses to one line and the shell care goes with it:
 
-```sh
-- npx playwright test --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL
-+ cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright test
+```yaml
+      - name: Run this shard
+        run: npx cameri run --shard "${{ matrix.shard }}/4" -- npx playwright test
 ```
 
-Shorter, sets `CAMERI_SHARD_INDEX` for you, and forwards the exit code without
-any shell care. The cost is that cameri chooses how discovery is invoked, and
-your command runs twice — once with `--list` appended, then for real. Use
-`cameri shard` when you want that first call to be yours.
+Same split and the same fallbacks — see
+[`--shard`](#--shard-and-balanced-sharding-in-one-command) above. There is no
+exit code to check because none is being discarded, and `CAMERI_SHARD_INDEX` can
+come out of the job's `env`, since cameri sets it.
 
 ## `cameri info`
 

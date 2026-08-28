@@ -182,19 +182,18 @@ it detected.
 every file costs the same. Since cameri already knows what each spec has cost on
 past runs, it can split by time instead:
 
-```sh
-LIST=$(npx playwright test --list --reporter=json)
-SPECS=$(echo "$LIST" | cameri shard "$CI_NODE_INDEX/$CI_NODE_TOTAL") || exit 1
-
-CAMERI_SHARD_INDEX=$CI_NODE_INDEX npx playwright test $SPECS
+```diff
+- npx playwright test --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL
++ npx cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright test
 ```
 
-`cameri shard` runs nothing itself: you list what would run, it says which of it
-belongs to this machine, you invoke Playwright. The server weights each spec by
-its median over the last 20 completed runs and packs longest-first, storing the
-result under the run key so every machine in the build gets one split rather
-than its own. On a suite where one file dominates, the difference is the whole
-point:
+That one command discovers the specs, asks the server which of them belong to
+this machine, and runs Playwright with the answer — setting `CAMERI_SHARD_INDEX`
+so the shards can be told apart, and forwarding the exit code untouched. The
+server weights each spec by its median over the last 20 completed runs and packs
+longest-first, storing the result under the run key so every machine in the build
+gets one split rather than its own. On a suite where one file dominates, the
+difference is the whole point:
 
 ```
   by file count      shard 1 ▓▓▓░░░░░░░  28s
@@ -209,13 +208,26 @@ point:
 ```
 
 No history yet means an even split and real numbers by the next build. An
-unreachable server, or anything else that stops a plan being made, prints
-`--shard=i/n` and exits 0 rather than failing the build — but a job whose shard
-total disagrees with the rest of the build prints nothing and exits 1, which is
-why the `|| exit 1` above is not decoration. If you would rather not think about
-any of that, `cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright
-test` does the same thing in one command. Both, and the failure modes, are in
-the [CLI README](packages/cli/README.md#cameri-shard).
+unreachable server, or anything else that stops a plan being made, falls back to
+Playwright's own `--shard` rather than failing the build.
+
+The cost of the one-liner is that your command runs twice — once with `--list`
+appended to discover the specs, then for real — and cameri chooses how that
+first call is made. To own it, `cameri shard` reads a spec list on stdin and
+prints the filters for you to pass on:
+
+```sh
+LIST=$(npx playwright test --list --reporter=json)
+SPECS=$(echo "$LIST" | npx cameri shard "$CI_NODE_INDEX/$CI_NODE_TOTAL") || exit 1
+
+CAMERI_SHARD_INDEX=$CI_NODE_INDEX npx playwright test $SPECS
+```
+
+Whatever narrowed the list narrows the plan, so `--project` or `--grep` on the
+`--list` call carries through. Keep the `|| exit 1`: a job whose shard total
+disagrees with the rest of the build prints nothing and exits 1, and `$(...)`
+throws that exit code away. Both forms, and every failure mode, are in the
+[CLI README](packages/cli/README.md#cameri-shard).
 
 ## Storage
 

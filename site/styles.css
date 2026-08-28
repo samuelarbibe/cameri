@@ -596,7 +596,7 @@ main {
 }
 
 /* The rail: a line down the left of every step but the last, so the numbers
-   read as a sequence rather than as three unrelated cards. */
+   read as a sequence rather than as unrelated cards. */
 .steps li:not(:last-child)::after {
   content: "";
   position: absolute;
@@ -661,14 +661,18 @@ pre code {
   font-size: 0.9rem;
 }
 
-.footnote a {
+/* The page's one inline-link idiom: same weight as the prose, marked only by a
+   rule that firms up on hover. */
+.footnote a,
+.steps p a {
   color: var(--foreground);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-color: var(--border);
 }
 
-.footnote a:hover {
+.footnote a:hover,
+.steps p a:hover {
   text-decoration-color: currentColor;
 }
 

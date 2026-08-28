@@ -437,7 +437,31 @@ export default defineConfig({
     ["@camerihq/playwright-reporter", { serverUrl: "https://cameri.example.com" }],
   ],
 });</code></pre>
-            <pre><code>CAMERI_RECORD_KEY=cam_... npx playwright test --shard=1/4</code></pre>
+            <pre><code>CAMERI_RECORD_KEY=cam_... npx playwright test</code></pre>
+          </li>
+
+          <li>
+            <h3>Optional: split the shards by time</h3>
+            <p>
+              <code>--shard=1/4</code> works and reports fine. Once there is history to read from,
+              cameri can split the same suite by what each spec has cost instead of by file count.
+              One command, in place of the one you already run:
+            </p>
+            <pre><code>npm install -D @camerihq/cli
+
+npx cameri run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL -- npx playwright test</code></pre>
+            <p>
+              It resolves the run key so the shards report as one run, sets
+              <code>CAMERI_SHARD_INDEX</code> so they can be told apart, and forwards your suite's
+              exit code untouched. No history yet, or an unreachable server, and it falls back to
+              Playwright's own sharding rather than failing the build. The cost of the short form
+              is that your command runs twice — once with <code>--list</code> appended to discover
+              the specs, then for real. To own that first call yourself, pipe a spec list into
+              <a href="https://github.com/samuelarbibe/cameri/tree/main/packages/cli#cameri-shard"
+                ><code>cameri shard</code></a
+              >
+              instead.
+            </p>
           </li>
         </ol>
 
