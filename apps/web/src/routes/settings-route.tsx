@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TRPCClientError } from "@trpc/client";
 import { AlertTriangleIcon, CheckCircle2Icon } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+import { AdminGate, useAdminMutationError } from "@/components/admin-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,21 +16,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime, toDate } from "@/lib/dates";
-import { adminToken, trpc, type Integration } from "@/trpc";
+import { trpc, type Integration } from "@/trpc";
 
 /**
- * Per-project configuration. One card today: the GitLab connection that lets
- * cameri keep a status comment on a merge request up to date while the suite
- * runs.
+ * Per-project configuration: the GitLab connection that lets cameri keep a
+ * status comment on a merge request up to date while the suite runs, and
+ * deleting the project.
  */
 export function SettingsRoute() {
   const { projectSlug = "" } = useParams();
   const queryClient = useQueryClient();
-
-  const admin = useQuery({
-    queryKey: ["admin-status"],
-    queryFn: () => trpc.admin.status.query(),
-  });
 
   const canStoreSecrets = useQuery({
     queryKey: ["can-store-secrets"],
@@ -44,18 +39,7 @@ export function SettingsRoute() {
 
   const gitlab = integrations.data?.find((row) => row.provider === "gitlab");
 
-  /**
-   * A rejected token is a stale token nine times out of ten — the server was
-   * restarted with a new one. Drop it and put the keyhole back, rather than
-   * leaving the page in a state where every button fails.
-   */
-  const onMutationError = (error: Error) => {
-    if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") {
-      adminToken.clear();
-      void queryClient.invalidateQueries({ queryKey: ["admin-status"] });
-    }
-    toast.error(error.message);
-  };
+  const onMutationError = useAdminMutationError();
 
   const save = useMutation({
     mutationFn: (input: { baseUrl: string; token: string }) =>
@@ -96,31 +80,94 @@ export function SettingsRoute() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {canStoreSecrets.isLoading || integrations.isLoading || admin.isLoading ? (
+          {canStoreSecrets.isLoading || integrations.isLoading ? (
             <Skeleton className="h-32" />
           ) : canStoreSecrets.data === false ? (
             <NoEncryptionKey />
-          ) : admin.data?.configured === false ? (
-            <NoAdminToken />
-          ) : admin.data?.unlocked === false ? (
-            <Unlock
-              onUnlock={(value) => {
-                adminToken.set(value);
-                void queryClient.invalidateQueries({ queryKey: ["admin-status"] });
-              }}
-            />
-          ) : gitlab ? (
-            <Connected
-              integration={gitlab}
-              onDisconnect={() => remove.mutate()}
-              disconnecting={remove.isPending}
-            />
           ) : (
-            <ConnectForm onSave={(input) => save.mutate(input)} saving={save.isPending} />
+            <AdminGate>
+              {gitlab ? (
+                <Connected
+                  integration={gitlab}
+                  onDisconnect={() => remove.mutate()}
+                  disconnecting={remove.isPending}
+                />
+              ) : (
+                <ConnectForm onSave={(input) => save.mutate(input)} saving={save.isPending} />
+              )}
+            </AdminGate>
           )}
         </CardContent>
       </Card>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle>Delete project</CardTitle>
+          <CardDescription>
+            Deletes this project with all of its runs, test history, record keys and integrations.
+            This cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AdminGate>
+            <DeleteProject projectSlug={projectSlug} />
+          </AdminGate>
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+/**
+ * Asks for the slug typed back before it will delete: the cascade takes every
+ * run with it, and a confirm button is too easy to click through.
+ */
+function DeleteProject({ projectSlug }: { projectSlug: string }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const onError = useAdminMutationError();
+  const [typed, setTyped] = useState("");
+
+  const remove = useMutation({
+    mutationFn: () => trpc.projects.remove.mutate({ projectSlug }),
+    onSuccess: () => {
+      toast.success(`Deleted ${projectSlug}`);
+      // Leave first: every query on this page is for a project that is gone.
+      navigate("/", { replace: true });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError,
+  });
+
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        remove.mutate();
+      }}
+    >
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span>
+          Type <code className="font-mono text-xs font-medium">{projectSlug}</code> to confirm
+        </span>
+        <Input
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          autoComplete="off"
+          className="max-w-xs"
+        />
+      </label>
+      <Button
+        type="submit"
+        size="sm"
+        variant="destructive"
+        className="self-start"
+        disabled={remove.isPending || typed !== projectSlug}
+      >
+        {remove.isPending ? "Deleting…" : "Delete project"}
+      </Button>
+    </form>
   );
 }
 
@@ -145,65 +192,6 @@ function NoEncryptionKey() {
         </pre>
       </div>
     </div>
-  );
-}
-
-/**
- * The other wall. Same shape as `NoEncryptionKey` on purpose: both are "the
- * server has not been given something it needs before it will keep a secret
- * for you", and both are fixed by setting one variable and restarting.
- */
-function NoAdminToken() {
-  return (
-    <div className="flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-      <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-      <div className="flex flex-col gap-2">
-        <p className="font-medium">No admin token configured</p>
-        <p className="text-muted-foreground">
-          Reading cameri is open, but changing a project&rsquo;s settings stores a credential the
-          server will later spend — so it will not accept a change until it can tell who is asking.
-          Set a token on the server and restart:
-        </p>
-        <pre className="bg-muted overflow-auto rounded-md p-2 font-mono text-xs">
-          {`CAMERI_ADMIN_TOKEN=$(node -e \\
-  "console.log(require('crypto').randomBytes(32).toString('base64url'))")`}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-/** Where the admin token gets typed. Held for the tab, never written to disk. */
-function Unlock({ onUnlock }: { onUnlock: (token: string) => void }) {
-  const [value, setValue] = useState("");
-
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onUnlock(value.trim());
-      }}
-    >
-      <p className="text-muted-foreground text-sm">
-        Changing these settings needs the server&rsquo;s{" "}
-        <code className="font-mono text-xs">CAMERI_ADMIN_TOKEN</code>. It is kept for this tab only.
-      </p>
-      <div className="flex gap-2">
-        <Input
-          type="password"
-          autoComplete="off"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder="Admin token"
-          className="max-w-xs"
-          required
-        />
-        <Button type="submit" size="sm" disabled={!value.trim()}>
-          Unlock
-        </Button>
-      </div>
-    </form>
   );
 }
 

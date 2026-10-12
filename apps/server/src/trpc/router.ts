@@ -1,5 +1,14 @@
 import { runStatusSchema, type RunStatus } from "@camerihq/contract";
-import { attachments, integrations, projects, runs, shards, testAttempts, tests } from "@camerihq/db";
+import {
+  attachments,
+  integrations,
+  projects,
+  recordKeys,
+  runs,
+  shards,
+  testAttempts,
+  tests,
+} from "@camerihq/db";
 import { TRPCError } from "@trpc/server";
 import {
   and,
@@ -18,6 +27,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { generateRecordKey, hashRecordKey } from "../auth.ts";
 import type { AppContext } from "../context.ts";
 import { createCipher, tokenHint } from "../crypto.ts";
 import { GitLabClient } from "../integrations/gitlab.ts";
@@ -26,6 +36,7 @@ import {
   BlockedIntegrationUrlError,
   parseAllowedHosts,
 } from "../integrations/url-guard.ts";
+import { slugify } from "../slug.ts";
 import { adminProcedure, isAdmin, publicProcedure, router } from "./trpc.ts";
 
 /**
@@ -63,6 +74,66 @@ export const appRouter = router({
     list: publicProcedure.query(({ ctx }) =>
       ctx.app.db.select().from(projects).orderBy(projects.name),
     ),
+
+    /**
+     * A project and its first record key, in one transaction so a project is
+     * never left without a way to report into it.
+     *
+     * Unlike `bootstrap`, a taken slug is refused rather than renamed: from the
+     * dashboard, quietly adopting someone else's project is the wrong surprise.
+     * The plaintext key is returned once — only its hash is stored.
+     */
+    create: adminProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(100) }))
+      .mutation(async ({ ctx, input }) => {
+        const slug = slugify(input.name);
+        if (!slug) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A project name needs at least one letter or digit.",
+          });
+        }
+
+        return ctx.app.db.transaction(async (tx) => {
+          const [project] = await tx
+            .insert(projects)
+            .values({ name: input.name, slug })
+            .onConflictDoNothing({ target: projects.slug })
+            .returning();
+
+          if (!project) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: `A project with the slug “${slug}” already exists.`,
+            });
+          }
+
+          const recordKey = generateRecordKey();
+          await tx.insert(recordKeys).values({
+            projectId: project.id,
+            name: "dashboard",
+            keyHash: hashRecordKey(recordKey),
+          });
+
+          return { project, recordKey };
+        });
+      }),
+
+    /**
+     * Everything under the project goes with it — keys, integrations, runs,
+     * attempts, attachment rows — by the schema's `onDelete: "cascade"`.
+     *
+     * Attachment *bytes* are left in storage: `Storage` has no delete, and
+     * nothing else removes them either. They are orphaned, not exposed — the
+     * rows that named them are gone.
+     */
+    remove: adminProcedure
+      .input(z.object({ projectSlug: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const project = await requireProject(ctx.app.db, input.projectSlug);
+        await ctx.app.db.delete(projects).where(eq(projects.id, project.id));
+        return { ok: true };
+      }),
   }),
 
   runs: router({

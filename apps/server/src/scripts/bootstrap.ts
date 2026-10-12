@@ -6,19 +6,16 @@
  *
  *   pnpm --filter @camerihq/server exec tsx src/scripts/bootstrap.ts "My App"
  */
-import { randomBytes } from "node:crypto";
 import { projects, recordKeys } from "@camerihq/db";
 import { loadDotenv } from "@camerihq/db/dotenv";
-import { hashRecordKey } from "../auth.ts";
+import { generateRecordKey, hashRecordKey } from "../auth.ts";
 import { createContext } from "../context.ts";
+import { slugify } from "../slug.ts";
 
 loadDotenv();
 
 const name = process.argv[2] ?? "Default";
-const slug = name
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-|-$/g, "");
+const slug = slugify(name);
 
 const context = createContext();
 
@@ -31,7 +28,7 @@ try {
 
   if (!project) throw new Error("could not create project");
 
-  const raw = `cam_${randomBytes(24).toString("base64url")}`;
+  const raw = generateRecordKey();
   await context.db.insert(recordKeys).values({
     projectId: project.id,
     name: "bootstrap",

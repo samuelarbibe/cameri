@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Toaster } from "@/components/ui/sonner";
 
 /** A crumb without an `href` is the current page. */
 export type Crumb = { label: string; href?: string };
@@ -78,7 +77,6 @@ export function AppShell({
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
       </SidebarInset>
-      <Toaster />
     </SidebarProvider>
   );
 }
