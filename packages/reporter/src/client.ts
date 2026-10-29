@@ -5,6 +5,8 @@ import type {
   CreateRunResponse,
   ReportResultsRequest,
   ReportResultsResponse,
+  ShardHeartbeatRequest,
+  ShardHeartbeatResponse,
 } from "@camerihq/contract";
 // Values come from the zod-free entry point — see packages/contract/src/constants.ts.
 import {
@@ -47,6 +49,11 @@ export class IngestClient {
     return this.post<CompleteShardResponse>("/shards/complete", body);
   }
 
+  /** No retries: the next ping is the retry, and a late ping proves nothing. */
+  heartbeat(body: ShardHeartbeatRequest): Promise<ShardHeartbeatResponse> {
+    return this.post<ShardHeartbeatResponse>("/shards/heartbeat", body, 0);
+  }
+
   /**
    * Presigned upload straight to object storage — deliberately not routed
    * through the ingest API, since a trace can be hundreds of megabytes.
@@ -58,11 +65,15 @@ export class IngestClient {
     }
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async post<T>(
+    path: string,
+    body: unknown,
+    maxRetries = this.config.maxRetries,
+  ): Promise<T> {
     const url = `${this.config.serverUrl}/api/${INGEST_API_VERSION}${path}`;
     let lastError: unknown;
 
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       if (attempt > 0) {
         // Exponential backoff with jitter, so 40 shards retrying do not
         // synchronise into a thundering herd against the server.
@@ -105,6 +116,6 @@ export class IngestClient {
 
     throw lastError instanceof Error
       ? lastError
-      : new IngestError(`${path} failed after ${this.config.maxRetries} retries`);
+      : new IngestError(`${path} failed after ${maxRetries} retries`);
   }
 }

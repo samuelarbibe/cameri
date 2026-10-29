@@ -26,6 +26,7 @@ import {
   BlockedIntegrationUrlError,
   parseAllowedHosts,
 } from "../integrations/url-guard.ts";
+import { settleOpenRuns } from "../shard-health.ts";
 import { adminProcedure, isAdmin, publicProcedure, router } from "./trpc.ts";
 
 /**
@@ -89,6 +90,7 @@ export const appRouter = router({
           .where(eq(projects.slug, input.projectSlug))
           .limit(1);
         if (!project) return [];
+        await settleOpenRuns(ctx.app, { projectId: project.id });
 
         // Both counts are correlated subqueries and must be built with the query
         // builder, not a raw `sql` template: interpolating a column into `sql`
@@ -187,6 +189,7 @@ export const appRouter = router({
 
     get: publicProcedure.input(z.object({ runId: z.uuid() })).query(async ({ ctx, input }) => {
       const { db } = ctx.app;
+      await settleOpenRuns(ctx.app, { runId: input.runId });
       const [run] = await db.select().from(runs).where(eq(runs.id, input.runId)).limit(1);
       if (!run) return null;
 
@@ -259,6 +262,7 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const project = await findProject(ctx.app.db, input.projectSlug);
         if (!project) return [];
+        await settleOpenRuns(ctx.app, { projectId: project.id });
 
         const like = input.search ? `%${input.search}%` : null;
         return mergeRequestQuery(ctx.app.db, project.id, {
@@ -274,6 +278,7 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const project = await findProject(ctx.app.db, input.projectSlug);
         if (!project) return null;
+        await settleOpenRuns(ctx.app, { projectId: project.id });
 
         // No `since` here: opening a merge request by iid is an explicit ask for
         // that one, and it should not vanish because it is older than the list's

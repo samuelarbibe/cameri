@@ -4,19 +4,18 @@ import {
   createRunRequestSchema,
   planShardsRequestSchema,
   reportResultsRequestSchema,
+  shardHeartbeatRequestSchema,
   type CompleteShardResponse,
   type CreateRunResponse,
   type PlanShardsResponse,
   type ReportResultsResponse,
-  type RunStats,
+  type ShardHeartbeatResponse,
   type UploadTarget,
 } from "@camerihq/contract";
 import {
-  deriveRunStatus,
   errorSignature,
   isFlakyWithinRun,
   matchDurations,
-  mergeStats,
   planShards,
   specDigest,
 } from "@camerihq/core";
@@ -30,20 +29,12 @@ import {
   type NewAttachment,
   type NewTestAttempt,
 } from "@camerihq/db";
-import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNotNull, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { recordKeyAuth } from "../auth.ts";
 import type { AppContext } from "../context.ts";
-
-const EMPTY_STATS: RunStats = {
-  total: 0,
-  passed: 0,
-  failed: 0,
-  skipped: 0,
-  flaky: 0,
-  durationMs: 0,
-};
+import { lockRun, settleRun } from "../shard-health.ts";
 
 export function ingestRoutes(app: AppContext) {
   const router = new Hono();
@@ -206,7 +197,16 @@ export function ingestRoutes(app: AppContext) {
       .values({ runId: run.id, shardIndex: body.shardIndex })
       .onConflictDoUpdate({
         target: [shards.runId, shards.shardIndex],
-        set: { lastSeenAt: new Date(), status: "running" },
+        // A rerun of this shard is a new instance, so it starts over, even from
+        // `abandoned`. Its first ping re-settles the run, reopening it if it
+        // had closed.
+        set: {
+          status: "running",
+          stats: null,
+          startedAt: new Date(),
+          completedAt: null,
+          lastSeenAt: new Date(),
+        },
       })
       .returning();
 
@@ -221,6 +221,7 @@ export function ingestRoutes(app: AppContext) {
       shardId: shard.id,
       projectId,
       isNewRun: run.inserted,
+      heartbeatIntervalMs: env.SHARD_HEARTBEAT_INTERVAL_SECONDS * 1000,
     };
     return c.json(response, 201);
   });
@@ -346,9 +347,56 @@ export function ingestRoutes(app: AppContext) {
   });
 
   /**
+   * A shard says it is still alive, however long its current test is taking,
+   * and checks on its siblings while it is here (see `settleRun`).
+   *
+   * A shard that is no longer running is not revived: the response tells the
+   * reporter so, and it stops pinging.
+   */
+  router.post("/shards/heartbeat", async (c) => {
+    const body = shardHeartbeatRequestSchema.parse(await c.req.json());
+    const { projectId } = c.get("project");
+
+    await assertShardBelongsToProject(db, projectId, body.runId, body.shardId);
+
+    const { shardStatus, settled } = await db.transaction(async (tx) => {
+      const run = await lockRun(tx, body.runId);
+      if (!run) throw new HTTPException(404, { message: "run not found" });
+
+      await tx
+        .update(shards)
+        .set({ lastSeenAt: new Date() })
+        .where(
+          and(
+            eq(shards.id, body.shardId),
+            eq(shards.status, "running"),
+            isNull(shards.completedAt),
+          ),
+        );
+
+      const settled = await settleRun(tx, app, run);
+
+      const [shard] = await tx
+        .select({ status: shards.status })
+        .from(shards)
+        .where(eq(shards.id, body.shardId));
+      if (!shard) throw new HTTPException(404, { message: "shard not found" });
+
+      return { shardStatus: shard.status, settled };
+    });
+
+    if (settled.closedNow) app.mrComments.schedule(body.runId, { final: true });
+
+    return c.json({ shardStatus } satisfies ShardHeartbeatResponse);
+  });
+
+  /**
    * A shard signs off. The last one through closes the run — which is the whole
    * reason the server tracks `expectedShards` rather than trusting any single
    * machine to know when the build is finished.
+   *
+   * A shard the server already abandoned keeps that verdict: its sign-off is
+   * accepted but changes nothing, the same as a repeated sign-off.
    */
   router.post("/shards/complete", async (c) => {
     const body = completeShardRequestSchema.parse(await c.req.json());
@@ -357,42 +405,29 @@ export function ingestRoutes(app: AppContext) {
     await assertShardBelongsToProject(db, projectId, body.runId, body.shardId);
 
     const result = await db.transaction(async (tx) => {
+      // Locked first, so two shards finishing at once cannot both decide they
+      // were last and race on the final status write.
+      const run = await lockRun(tx, body.runId);
+      if (!run) throw new HTTPException(404, { message: "run not found" });
+
       await tx
         .update(shards)
         .set({ status: body.status, stats: body.stats, completedAt: new Date() })
-        .where(eq(shards.id, body.shardId));
+        .where(
+          and(
+            eq(shards.id, body.shardId),
+            eq(shards.status, "running"),
+            isNull(shards.completedAt),
+          ),
+        );
 
-      // Lock the run row so two shards finishing at once cannot both decide
-      // they were last and race on the final status write.
-      const [run] = await tx
-        .select()
-        .from(runs)
-        .where(eq(runs.id, body.runId))
-        .for("update")
-        .limit(1);
-      if (!run) throw new HTTPException(404, { message: "run not found" });
-
-      const shardRows = await tx.select().from(shards).where(eq(shards.runId, body.runId));
-      const completed = shardRows.filter((s) => s.completedAt !== null);
-      const allShardsReported = completed.length >= run.expectedShards;
-      const anyShardAbandoned = shardRows.some((s) => s.status === "abandoned");
-
-      const stats = mergeStats(completed.map((s) => s.stats ?? EMPTY_STATS));
-      const status = deriveRunStatus(stats, { allShardsReported, anyShardAbandoned });
-
-      await tx
-        .update(runs)
-        .set({
-          status,
-          completedAt: status === "running" ? null : new Date(),
-        })
-        .where(eq(runs.id, body.runId));
+      const settled = await settleRun(tx, app, run);
 
       return {
-        runStatus: status,
-        runComplete: status !== "running",
-        shardsCompleted: completed.length,
-        expectedShards: run.expectedShards,
+        runStatus: settled.status,
+        runComplete: settled.status !== "running",
+        shardsCompleted: settled.shardsCompleted,
+        expectedShards: settled.expectedShards,
       } satisfies CompleteShardResponse;
     });
 

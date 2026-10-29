@@ -11,6 +11,8 @@ export interface AppContext {
   /** Null when CAMERI_ENCRYPTION_KEY is unset; integrations are then unavailable. */
   encryptionKey: Buffer | null;
   mrComments: MrCommentSync;
+  /** Shards could not ping while this process was down; see `shard-health.ts`. */
+  bootedAt: Date;
   close: () => Promise<void>;
 }
 
@@ -36,6 +38,7 @@ export function createContext(env: Env = loadEnv()): AppContext {
     storage: createStorage(env, createSigner(encryptionKey, "blob-upload")),
     encryptionKey,
     mrComments: undefined as unknown as MrCommentSync,
+    bootedAt: new Date(),
     close: async () => {
       await app.mrComments.close();
       await close();

@@ -159,7 +159,7 @@ and none of them knows when the build is done. The server owns that:
            POST /api/v1/shards/complete
                     │
         last shard in ──► run status resolved
-        or stale_at passes ──► swept to timedOut
+        or a shard misses its pings ──► abandoned, run timedOut
 ```
 
 The run key is what ties them together, and it is derived from the CI build id
@@ -168,8 +168,16 @@ at the same value independently. GitHub Actions, GitLab CI, CircleCI, Buildkite
 and Jenkins are detected automatically. Anywhere else, set `CAMERI_RUN_KEY` to
 something every shard of one build agrees on.
 
-If a shard dies without reporting, the run does not hang: it is swept to
-`timedOut` after `RUN_STALE_MINUTES` of silence.
+If a shard dies without reporting, the run does not hang. Each shard pings
+`POST /api/v1/shards/heartbeat` as soon as it joins and then at the rate the
+server hands back (`SHARD_HEARTBEAT_INTERVAL_SECONDS`). A shard that misses
+`SHARD_HEARTBEAT_MAX_MISSES` pings in a row is abandoned for good, and the run
+closes as `timedOut` once its other shards are done. There is no background
+job: the check runs whenever a shard pings or signs off, and whenever the run
+is read, which covers a run with nobody left to ping. A live shard is never
+stopped by a clock, however long its tests take. Shards that never join get
+`RUN_STALE_MINUTES` after the last shard was seen, since a CI job still waiting
+for a runner looks the same as a cancelled one.
 
 [`@camerihq/cli`](packages/cli/README.md) is there for when detection is wrong
 or a run spawns Playwright more than once — `npx cameri run -- playwright test`
@@ -313,7 +321,9 @@ or malformed.
 | `STORAGE_DRIVER` | `local` | `local` \| `s3` |
 | `STORAGE_LOCAL_DIR` | `./.cameri-storage` | `/data` in the image |
 | `S3_BUCKET` / `S3_REGION` / `S3_ENDPOINT` | — | `s3` driver only, and not implemented yet |
-| `RUN_STALE_MINUTES` | `120` | a run with no shard activity for this long is swept to `timedOut` |
+| `RUN_STALE_MINUTES` | `120` | how long a run waits for shards that never joined, after the last shard was seen |
+| `SHARD_HEARTBEAT_INTERVAL_SECONDS` | `30` | how often each shard pings the server |
+| `SHARD_HEARTBEAT_MAX_MISSES` | `3` | missed pings in a row before a shard is abandoned |
 
 Outside a container these can go in a `.env` at the root of wherever you are
 running from; real environment variables always win, so the file is a no-op in

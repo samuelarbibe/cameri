@@ -66,6 +66,8 @@ export default class CameriReporter implements Reporter {
   private chain: Promise<void> = Promise.resolve();
   private ready: Promise<void> = Promise.resolve();
   private flushTimer?: ReturnType<typeof setTimeout>;
+  private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private heartbeatInFlight = false;
   /** Steps accumulated per in-flight attempt, drained when the attempt ends. */
   private steps = new Map<string, TestStep[]>();
 
@@ -106,6 +108,7 @@ export default class CameriReporter implements Reporter {
       });
       this.runId = response.runId;
       this.shardId = response.shardId;
+      this.startHeartbeat(response.heartbeatIntervalMs);
       this.log(
         `shard ${shardIndex}/${expectedShards} joined run ${response.runId}` +
           (response.isNewRun ? " (created)" : ""),
@@ -199,6 +202,9 @@ export default class CameriReporter implements Reporter {
 
     this.scheduleFlush();
     await this.chain;
+    // A shard that ran no tests never flushes, so nothing above waited on
+    // `createRun` — without this it signs off before it has a run to sign off from.
+    await this.ready;
 
     if (!this.runId || !this.shardId) return;
 
@@ -213,6 +219,10 @@ export default class CameriReporter implements Reporter {
         `shard complete — ${response.shardsCompleted}/${response.expectedShards} in, run is ${response.runStatus}`,
       );
     });
+
+    // Only now: the final flush can spend minutes uploading traces, and the
+    // shard is still alive for all of it.
+    this.stopHeartbeat();
   }
 
   onError(error: PwTestError): void {
@@ -251,6 +261,47 @@ export default class CameriReporter implements Reporter {
       this.scheduleFlush();
     }, this.config.flushIntervalMs);
     this.flushTimer.unref?.();
+  }
+
+  /**
+   * Pings once now, so the server counts missed pings from the start, then at
+   * the rate the server asked for. `unref` for the same reason as the flush
+   * timer: never keep Node alive.
+   */
+  private startHeartbeat(intervalMs: number): void {
+    void this.sendHeartbeat();
+    this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), intervalMs);
+    this.heartbeatTimer.unref?.();
+  }
+
+  private stopHeartbeat(): void {
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = undefined;
+  }
+
+  /**
+   * Deliberately not run through `guard`: that would turn reporting off over one
+   * lost ping, when the server tolerates several in a row.
+   */
+  private async sendHeartbeat(): Promise<void> {
+    if (this.heartbeatInFlight || !this.runId || !this.shardId) return;
+    this.heartbeatInFlight = true;
+    try {
+      const response = await this.client.heartbeat({ runId: this.runId, shardId: this.shardId });
+      if (response.shardStatus !== "running") {
+        // Signed off, or abandoned after missing pings. Either way the server
+        // is done with this shard, and pinging again will not change that.
+        this.stopHeartbeat();
+        // `completed` is just a ping that crossed the sign-off in flight.
+        if (response.shardStatus === "abandoned") {
+          console.warn("[cameri] the server abandoned this shard after missed pings");
+        }
+      }
+    } catch (error) {
+      this.log(`heartbeat failed: ${describe(error)}`);
+    } finally {
+      this.heartbeatInFlight = false;
+    }
   }
 
   /** Queues a flush onto the serialized chain so batches arrive in order. */
@@ -409,6 +460,8 @@ export default class CameriReporter implements Reporter {
 
   private fail(what: string, error: unknown): void {
     this.disabled = true;
+    // With reporting off this shard will never sign off, so stop vouching for it.
+    this.stopHeartbeat();
     console.warn(`[cameri] ${what} failed, reporting is now off: ${describe(error)}`);
   }
 

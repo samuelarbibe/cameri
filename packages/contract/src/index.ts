@@ -160,6 +160,11 @@ export const createRunResponseSchema = z.object({
   projectId: z.string(),
   /** False when another shard got here first — useful for logging only. */
   isNewRun: z.boolean(),
+  /**
+   * How often to call `/shards/heartbeat`, starting now. The server owns the
+   * rate: it abandons a shard that misses several pings in a row.
+   */
+  heartbeatIntervalMs: z.number().int().positive(),
 });
 export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
 
@@ -308,6 +313,21 @@ export const completeShardResponseSchema = z.object({
   expectedShards: z.number().int().nonnegative(),
 });
 export type CompleteShardResponse = z.infer<typeof completeShardResponseSchema>;
+
+export const shardHeartbeatRequestSchema = z.object({
+  runId: z.string(),
+  shardId: z.string(),
+});
+export type ShardHeartbeatRequest = z.infer<typeof shardHeartbeatRequestSchema>;
+
+export const shardHeartbeatResponseSchema = z.object({
+  /**
+   * Anything but `running` means the server is done with this shard (it signed
+   * off, or it was abandoned after missing pings), so the reporter stops pinging.
+   */
+  shardStatus: shardStatusSchema,
+});
+export type ShardHeartbeatResponse = z.infer<typeof shardHeartbeatResponseSchema>;
 
 export const apiErrorSchema = z.object({
   error: z.object({

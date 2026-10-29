@@ -155,7 +155,11 @@ export const runs = pgTable(
 
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    /** After this, an unfinished run is presumed dead and swept to `timedOut`. */
+    /**
+     * Still written, no longer read: run health comes from shard pings, and the
+     * wait for missing shards from `shards.last_seen_at` (see the server's
+     * `shard-health.ts`). Dropping the column needs a migration.
+     */
     staleAt: timestamp("stale_at", { withTimezone: true }).notNull(),
     createdAt,
   },

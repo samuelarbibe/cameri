@@ -73,8 +73,15 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
   S3_ENDPOINT: z.string().optional(),
-  /** A run with no shard activity for this long is swept to `timedOut`. */
+  /**
+   * How long a run waits for shards that never joined, counted from the last
+   * time any of its shards was seen. Live shards are judged by pings instead.
+   */
   RUN_STALE_MINUTES: z.coerce.number().int().positive().default(120),
+  /** How often a shard pings `/shards/heartbeat`. Sent to the reporter in `createRun`. */
+  SHARD_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(30),
+  /** A shard that misses this many pings in a row is abandoned. */
+  SHARD_HEARTBEAT_MAX_MISSES: z.coerce.number().int().min(1).default(3),
 });
 
 /**
