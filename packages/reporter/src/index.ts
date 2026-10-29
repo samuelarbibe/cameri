@@ -199,6 +199,9 @@ export default class CameriReporter implements Reporter {
 
     this.scheduleFlush();
     await this.chain;
+    // A shard that ran no tests never flushes, so nothing above waited on
+    // `createRun` — without this it signs off before it has a run to sign off from.
+    await this.ready;
 
     if (!this.runId || !this.shardId) return;
 

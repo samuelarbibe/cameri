@@ -4,6 +4,7 @@ import { createApp } from "./app.ts";
 import { createContext } from "./context.ts";
 import { loadEnv } from "./env.ts";
 import { migrateToLatest } from "./migrations.ts";
+import { startStaleRunSweeper } from "./sweeper.ts";
 
 // Local development convenience. Real environment variables always win, so
 // this is a no-op in CI and in containers.
@@ -23,6 +24,9 @@ if (env.DB_MIGRATE_ON_BOOT) {
 
 const context = createContext(env);
 const app = createApp(context);
+// Started here rather than in `createContext`, so scripts and tests that build
+// a context do not also start closing other people's runs.
+const sweeper = startStaleRunSweeper(context);
 
 const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (info) => {
   console.log(`cameri server listening on http://${env.HOST}:${info.port}`);
@@ -36,6 +40,7 @@ const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (
 async function shutdown(signal: string): Promise<void> {
   console.log(`${signal} received, draining`);
   server.close();
+  sweeper.stop();
   await context.close();
   process.exit(0);
 }
