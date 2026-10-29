@@ -335,6 +335,13 @@ export function ingestRoutes(app: AppContext) {
         .update(shards)
         .set({ lastSeenAt: new Date() })
         .where(eq(shards.id, body.shardId));
+
+      // Every batch is a sign of life, so a suite that legitimately runs longer
+      // than RUN_STALE_MINUTES is not swept out from under its own shards.
+      await tx
+        .update(runs)
+        .set({ staleAt: new Date(Date.now() + env.RUN_STALE_MINUTES * 60_000) })
+        .where(eq(runs.id, body.runId));
     });
 
     // Rate-limited inside the sync, so a chatty shard cannot turn every batch
