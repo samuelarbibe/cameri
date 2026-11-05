@@ -1,0 +1,48 @@
+README.md
+  h_4c0fbaf8beba33 260-270,289-290
+apps/server/src/integrations/github.test.ts
+  h_4c0fbaf8beba33 1-72
+apps/server/src/integrations/github.ts
+  h_4c0fbaf8beba33 1-91
+apps/server/src/integrations/mr-comment.ts
+  h_4c0fbaf8beba33 6,155-156,161,173-175,183,365,369,375
+apps/server/src/integrations/note-client.ts
+  h_4c0fbaf8beba33 1-25
+apps/server/src/trpc/router.ts
+  h_4c0fbaf8beba33 1,23,602,624,627-630,634,662,769
+apps/web/src/routes/mr-route.tsx
+  h_4c0fbaf8beba33 83
+apps/web/src/routes/settings-route.tsx
+  h_4c0fbaf8beba33 4,21-67,69-70,74-84,102,105,119,121,128,130,137-181,196,270,275,283,327,331,335,348,352,363,370-371
+packages/contract/package.json
+  h_4c0fbaf8beba33 22,28-30
+packages/contract/src/ci.test.ts
+  h_4c0fbaf8beba33 1-110
+packages/contract/src/ci.ts
+  h_4c0fbaf8beba33 1,128-130,138,160-199
+packages/contract/src/constants.ts
+  h_4c0fbaf8beba33 45-47
+packages/contract/src/index.ts
+  h_4c0fbaf8beba33 62,64,66
+packages/db/drizzle/0006_fat_skaar.sql
+  h_4c0fbaf8beba33 1
+packages/db/drizzle/meta/0006_snapshot.json
+  h_4c0fbaf8beba33 1-1442
+packages/db/drizzle/meta/_journal.json
+  h_4c0fbaf8beba33 46-52
+packages/db/src/schema.ts
+  h_4c0fbaf8beba33 3,31
+pnpm-lock.yaml
+  h_4c0fbaf8beba33 155-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "0e13e51205991dc1b46dc5cb944ccd5ff79b31b5",
+  "prompts": {},
+  "humans": {
+    "h_4c0fbaf8beba33": {
+      "author": "Samuel Arbibe <sarbibe@paloaltonetworks.com>"
+    }
+  }
+}
