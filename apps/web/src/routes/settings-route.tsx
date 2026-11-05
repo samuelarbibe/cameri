@@ -355,6 +355,8 @@ function ConnectForm({
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">Access token</span>
+          {/* `type=password` so the value does not sit in plaintext on a shared
+              screen, and no autofill: this is not a login. */}
           <Input
             type="password"
             autoComplete="off"

@@ -157,6 +157,11 @@ export function detectMergeRequest(env: Env = process.env): MergeRequestContext 
   };
 }
 
+/** Local fallback so `npx playwright test` off CI still records something sane. */
+export function localRunKey(): string {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 interface GitHubEventPayload {
   pull_request?: {
     number?: number;
@@ -195,9 +200,4 @@ function readGitHubEvent(path: string | undefined): GitHubEventPayload | undefin
   } catch {
     return undefined;
   }
-}
-
-/** Local fallback so `npx playwright test` off CI still records something sane. */
-export function localRunKey(): string {
-  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }

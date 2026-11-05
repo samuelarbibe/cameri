@@ -16,10 +16,10 @@ import { assertReachableIntegrationUrl, parseAllowedHosts } from "./url-guard.ts
  *
  * Three properties matter here, in order:
  *
- *  1. Ingest must never wait on GitLab. Every entry point is fire-and-forget.
+ *  1. Ingest must never wait on the provider. Every entry point is fire-and-forget.
  *  2. One comment per run, edited in place. A comment per batch would bury the
  *     merge request under a hundred notes.
- *  3. GitLab must not be hammered. Updates coalesce onto a minimum interval,
+ *  3. The provider must not be hammered. Updates coalesce onto a minimum interval,
  *     with the final state always delivered.
  */
 
@@ -136,7 +136,7 @@ export function createMrCommentSync(app: AppContext): MrCommentSync {
   };
 }
 
-/** One pass: read the run, render it, and write it to GitLab. */
+/** One pass: read the run, render it, and write it to the provider. */
 async function sync(app: AppContext, runId: string): Promise<void> {
   const { db, env } = app;
 
@@ -167,7 +167,7 @@ async function sync(app: AppContext, runId: string): Promise<void> {
   // `run.mrServerUrl`, which arrives in the ingest payload — so anyone holding
   // a record key could have named the host that the decrypted token below was
   // then presented to. A record key is a write credential for test results; it
-  // is not permission to be told the GitLab token.
+  // is not permission to be told the integration token.
   const { baseUrl } = integration;
   if (!baseUrl) {
     throw new Error(
@@ -227,7 +227,7 @@ interface RenderContext {
 /**
  * The comment body.
  *
- * Markdown, because that is what GitLab renders, and deliberately compact: this
+ * Markdown, because that is what GitLab and GitHub render, and deliberately compact: this
  * sits in a review thread where a reviewer is trying to read a diff, so it earns
  * its space by answering "can I merge this" and then getting out of the way.
  */
@@ -349,7 +349,7 @@ function oneLine(value: string): string {
  * test named `<img onerror=…>` from rendering as anything but its own name.
  */
 function escapeMd(value: string): string {
-  return value.replace(/[<>&`|*_[\]\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+  return value.replace(/[<>&`|*_@[\]\\]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 /**

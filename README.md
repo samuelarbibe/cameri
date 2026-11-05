@@ -56,7 +56,7 @@ services:
       # upload URL stops verifying at the next restart.
       CAMERI_ENCRYPTION_KEY: ${CAMERI_ENCRYPTION_KEY:?generate one}
       # Required before anyone can change a project's settings. Reading is
-      # open; connecting a GitLab account is not.
+      # open; connecting a GitLab or GitHub account is not.
       CAMERI_ADMIN_TOKEN: ${CAMERI_ADMIN_TOKEN:?generate one}
     volumes:
       # Attachment bytes on the default storage driver. Losing this volume
