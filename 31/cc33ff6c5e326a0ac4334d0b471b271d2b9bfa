@@ -1,0 +1,24 @@
+README.md
+  h_4c0fbaf8beba33 59
+apps/server/src/integrations/mr-comment.ts
+  h_4c0fbaf8beba33 19,22,139,170,230,352
+apps/web/src/routes/settings-route.tsx
+  h_4c0fbaf8beba33 358-359
+docker/docker-compose.yml
+  h_4c0fbaf8beba33 62
+packages/contract/src/ci.ts
+  h_4c0fbaf8beba33 160-164
+site/index.html
+  h_4c0fbaf8beba33 311-312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "31cc33ff6c5e326a0ac4334d0b471b271d2b9bfa",
+  "prompts": {},
+  "humans": {
+    "h_4c0fbaf8beba33": {
+      "author": "Samuel Arbibe <sarbibe@paloaltonetworks.com>"
+    }
+  }
+}
