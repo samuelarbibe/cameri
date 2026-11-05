@@ -19,10 +19,14 @@
     }
   },
   "scripts": {
+    "test": "node --import tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
   }
 }

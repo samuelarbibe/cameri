@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TRPCClientError } from "@trpc/client";
 import { AlertTriangleIcon, CheckCircle2Icon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useParams } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -18,13 +18,70 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime, toDate } from "@/lib/dates";
 import { adminToken, trpc, type Integration } from "@/trpc";
 
+type Provider = Integration["provider"];
+
+interface ProviderCopy {
+  title: string;
+  description: string;
+  urlLabel: string;
+  defaultUrl: string;
+  urlPlaceholder: string;
+  tokenPlaceholder: string;
+  tokenHelp: ReactNode;
+}
+
+const PROVIDERS: Record<Provider, ProviderCopy> = {
+  gitlab: {
+    title: "GitLab",
+    description:
+      "When a run comes from a merge request pipeline, cameri posts one comment on the merge request and edits it in place as shards report - so the thread gets a live summary rather than a note per batch.",
+    urlLabel: "Instance URL",
+    defaultUrl: "https://gitlab.com",
+    urlPlaceholder: "https://gitlab.example.com",
+    tokenPlaceholder: "glpat-…",
+    tokenHelp: (
+      <>
+        A project access token with the <code className="font-mono">api</code> scope and at least
+        the Reporter role is enough - that is what posting and editing a note requires.
+      </>
+    ),
+  },
+  github: {
+    title: "GitHub",
+    description:
+      "When a run comes from a pull request, cameri posts one comment on the pull request and edits it in place as shards report - so the thread gets a live summary rather than a comment per batch.",
+    urlLabel: "API URL",
+    defaultUrl: "https://api.github.com",
+    urlPlaceholder: "https://github.example.com/api/v3",
+    tokenPlaceholder: "github_pat_…",
+    tokenHelp: (
+      <>
+        A fine-grained token with <code className="font-mono">Pull requests: Read and write</code>{" "}
+        on the repository, or a classic token with the <code className="font-mono">repo</code>{" "}
+        scope, is enough. GitHub Enterprise Server uses{" "}
+        <code className="font-mono">https://HOST/api/v3</code>.
+      </>
+    ),
+  },
+};
+
 /**
- * Per-project configuration. One card today: the GitLab connection that lets
- * cameri keep a status comment on a merge request up to date while the suite
- * runs.
+ * Per-project configuration: one card per provider that cameri can post a status
+ * comment to while the suite runs.
  */
 export function SettingsRoute() {
   const { projectSlug = "" } = useParams();
+
+  return (
+    <div className="flex max-w-3xl flex-col gap-6">
+      <IntegrationCard provider="gitlab" projectSlug={projectSlug} />
+      <IntegrationCard provider="github" projectSlug={projectSlug} />
+    </div>
+  );
+}
+
+function IntegrationCard({ provider, projectSlug }: { provider: Provider; projectSlug: string }) {
+  const copy = PROVIDERS[provider];
   const queryClient = useQueryClient();
 
   const admin = useQuery({
@@ -42,10 +99,10 @@ export function SettingsRoute() {
     queryFn: () => trpc.integrations.list.query({ projectSlug }),
   });
 
-  const gitlab = integrations.data?.find((row) => row.provider === "gitlab");
+  const integration = integrations.data?.find((row) => row.provider === provider);
 
   /**
-   * A rejected token is a stale token nine times out of ten — the server was
+   * A rejected token is a stale token nine times out of ten - the server was
    * restarted with a new one. Drop it and put the keyhole back, rather than
    * leaving the page in a state where every button fails.
    */
@@ -59,68 +116,69 @@ export function SettingsRoute() {
 
   const save = useMutation({
     mutationFn: (input: { baseUrl: string; token: string }) =>
-      trpc.integrations.save.mutate({ projectSlug, provider: "gitlab", ...input }),
+      trpc.integrations.save.mutate({ projectSlug, provider, ...input }),
     onSuccess: () => {
-      toast.success("GitLab connected");
+      toast.success(`${copy.title} connected`);
       void queryClient.invalidateQueries({ queryKey: ["integrations", projectSlug] });
     },
     onError: onMutationError,
   });
 
   const remove = useMutation({
-    mutationFn: () =>
-      trpc.integrations.remove.mutate({ projectSlug, provider: "gitlab" }),
+    mutationFn: () => trpc.integrations.remove.mutate({ projectSlug, provider }),
     onSuccess: () => {
-      toast.success("GitLab disconnected");
+      toast.success(`${copy.title} disconnected`);
       void queryClient.invalidateQueries({ queryKey: ["integrations", projectSlug] });
     },
     onError: onMutationError,
   });
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            GitLab
-            {gitlab ? (
-              <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
-                Connected
-              </Badge>
-            ) : null}
-          </CardTitle>
-          <CardDescription>
-            When a run comes from a merge request pipeline, cameri posts one comment on the merge
-            request and edits it in place as shards report — so the thread gets a live summary
-            rather than a note per batch.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {canStoreSecrets.isLoading || integrations.isLoading || admin.isLoading ? (
-            <Skeleton className="h-32" />
-          ) : canStoreSecrets.data === false ? (
-            <NoEncryptionKey />
-          ) : admin.data?.configured === false ? (
-            <NoAdminToken />
-          ) : admin.data?.unlocked === false ? (
-            <Unlock
-              onUnlock={(value) => {
-                adminToken.set(value);
-                void queryClient.invalidateQueries({ queryKey: ["admin-status"] });
-              }}
-            />
-          ) : gitlab ? (
-            <Connected
-              integration={gitlab}
-              onDisconnect={() => remove.mutate()}
-              disconnecting={remove.isPending}
-            />
-          ) : (
-            <ConnectForm onSave={(input) => save.mutate(input)} saving={save.isPending} />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {copy.title}
+          {integration ? (
+            <Badge
+              variant="outline"
+              className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+            >
+              Connected
+            </Badge>
+          ) : null}
+        </CardTitle>
+        <CardDescription>{copy.description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {canStoreSecrets.isLoading || integrations.isLoading || admin.isLoading ? (
+          <Skeleton className="h-32" />
+        ) : canStoreSecrets.data === false ? (
+          <NoEncryptionKey />
+        ) : admin.data?.configured === false ? (
+          <NoAdminToken />
+        ) : admin.data?.unlocked === false ? (
+          <Unlock
+            onUnlock={(value) => {
+              adminToken.set(value);
+              void queryClient.invalidateQueries({ queryKey: ["admin-status"] });
+            }}
+          />
+        ) : integration ? (
+          <Connected
+            integration={integration}
+            urlLabel={copy.urlLabel}
+            onDisconnect={() => remove.mutate()}
+            disconnecting={remove.isPending}
+          />
+        ) : (
+          <ConnectForm
+            copy={copy}
+            onSave={(input) => save.mutate(input)}
+            saving={save.isPending}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -135,7 +193,7 @@ function NoEncryptionKey() {
       <div className="flex flex-col gap-2">
         <p className="font-medium">No encryption key configured</p>
         <p className="text-muted-foreground">
-          A GitLab token has to be stored in a form the server can read back, so cameri encrypts
+          An access token has to be stored in a form the server can read back, so cameri encrypts
           it at rest and will not accept one until it has a key. Generate one, set it on the
           server and restart:
         </p>
@@ -209,10 +267,12 @@ function Unlock({ onUnlock }: { onUnlock: (token: string) => void }) {
 
 function Connected({
   integration,
+  urlLabel,
   onDisconnect,
   disconnecting,
 }: {
   integration: Integration;
+  urlLabel: string;
   onDisconnect: () => void;
   disconnecting: boolean;
 }) {
@@ -220,7 +280,7 @@ function Connected({
     <div className="flex flex-col gap-4">
       <dl className="grid gap-4 text-sm sm:grid-cols-3">
         <div>
-          <dt className="text-muted-foreground text-xs">Instance</dt>
+          <dt className="text-muted-foreground text-xs">{urlLabel}</dt>
           <dd className="mt-0.5 truncate font-mono text-xs">{integration.baseUrl}</dd>
         </div>
         <div>
@@ -264,13 +324,15 @@ function Connected({
 }
 
 function ConnectForm({
+  copy,
   onSave,
   saving,
 }: {
+  copy: ProviderCopy;
   onSave: (input: { baseUrl: string; token: string }) => void;
   saving: boolean;
 }) {
-  const [baseUrl, setBaseUrl] = useState("https://gitlab.com");
+  const [baseUrl, setBaseUrl] = useState(copy.defaultUrl);
   const [token, setToken] = useState("");
 
   return (
@@ -283,34 +345,30 @@ function ConnectForm({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-sm">
-          <span className="font-medium">Instance URL</span>
+          <span className="font-medium">{copy.urlLabel}</span>
           <Input
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://gitlab.example.com"
+            placeholder={copy.urlPlaceholder}
             required
           />
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">Access token</span>
-          {/* `type=password` so the value does not sit in plaintext on a shared
-              screen, and no autofill: this is not a login. */}
           <Input
             type="password"
             autoComplete="off"
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            placeholder="glpat-…"
+            placeholder={copy.tokenPlaceholder}
             required
           />
         </label>
       </div>
 
       <p className="text-muted-foreground text-xs">
-        A project access token with the <code className="font-mono">api</code> scope and at least
-        the Reporter role is enough — that is what posting and editing a note requires. The token
-        is verified against the instance before it is stored, and is never sent back to this page
-        afterwards.
+        {copy.tokenHelp} The token is verified against the {copy.title} API before it is stored,
+        and is never sent back to this page afterwards.
       </p>
 
       <Button type="submit" size="sm" className="self-start" disabled={saving || !token}>

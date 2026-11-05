@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { CiContext, GitContext, MergeRequestContext } from "./index.ts";
 
 type Env = NodeJS.ProcessEnv;
@@ -124,9 +125,9 @@ const NO_MERGE_REQUEST: MergeRequestContext = {
 /**
  * Identifies the merge request a build belongs to, if any.
  *
- * GitLab only for now — it is the one provider the server can post a status
- * comment to. Everywhere else this returns nulls, and the server simply has
- * nothing to comment on.
+ * GitLab merge requests and GitHub pull requests - the providers the server can
+ * post a status comment to. Everywhere else this returns nulls, and the server
+ * simply has nothing to comment on.
  *
  * Note `CI_MERGE_REQUEST_IID` is only set on `merge_request_event` pipelines. A
  * branch pipeline for a branch that happens to have an MR open does not get it,
@@ -134,6 +135,7 @@ const NO_MERGE_REQUEST: MergeRequestContext = {
  * about rather than guessing.
  */
 export function detectMergeRequest(env: Env = process.env): MergeRequestContext {
+  if (env.GITHUB_ACTIONS) return detectGitHubPullRequest(env);
   if (!env.GITLAB_CI || !env.CI_MERGE_REQUEST_IID) return NO_MERGE_REQUEST;
 
   // The *target* project, not `CI_PROJECT_ID`. On a fork pipeline those differ,
@@ -153,6 +155,46 @@ export function detectMergeRequest(env: Env = process.env): MergeRequestContext 
     serverUrl: env.CI_SERVER_URL ?? null,
     webUrl: projectUrl ? `${projectUrl}/-/merge_requests/${env.CI_MERGE_REQUEST_IID}` : null,
   };
+}
+
+interface GitHubEventPayload {
+  pull_request?: {
+    number?: number;
+    title?: string;
+    html_url?: string;
+    base?: { ref?: string; repo?: { full_name?: string } };
+  };
+}
+
+function detectGitHubPullRequest(env: Env): MergeRequestContext {
+  if (env.GITHUB_EVENT_NAME !== "pull_request" && env.GITHUB_EVENT_NAME !== "pull_request_target") {
+    return NO_MERGE_REQUEST;
+  }
+
+  const pullRequest = readGitHubEvent(env.GITHUB_EVENT_PATH)?.pull_request;
+  const number = pullRequest?.number ?? /^refs\/pull\/(\d+)\//.exec(env.GITHUB_REF ?? "")?.[1];
+  const repository = pullRequest?.base?.repo?.full_name ?? env.GITHUB_REPOSITORY;
+  if (!number || !repository) return NO_MERGE_REQUEST;
+
+  const serverUrl = env.GITHUB_SERVER_URL ?? "https://github.com";
+  return {
+    provider: "github",
+    projectId: repository,
+    iid: String(number),
+    title: pullRequest?.title ?? null,
+    targetBranch: env.GITHUB_BASE_REF || pullRequest?.base?.ref || null,
+    serverUrl,
+    webUrl: pullRequest?.html_url ?? `${serverUrl}/${repository}/pull/${number}`,
+  };
+}
+
+function readGitHubEvent(path: string | undefined): GitHubEventPayload | undefined {
+  if (!path) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as GitHubEventPayload;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Local fallback so `npx playwright test` off CI still records something sane. */
