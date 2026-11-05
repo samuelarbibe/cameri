@@ -59,7 +59,7 @@ services:
       # URLs handed to CI runners and into links posted on merge requests, so
       # `localhost` is right only while the only reader is this machine.
       PUBLIC_URL: ${CAMERI_PUBLIC_URL:-http://localhost:3000}
-      # Signs upload URLs and encrypts stored GitLab tokens. Put one in
+      # Signs upload URLs and encrypts stored GitLab and GitHub tokens. Put one in
       # `docker/.env` — `openssl rand -base64 32`. Deliberately not defaulted to
       # a literal: a key committed to a repository is not a key. Left empty the
       # server starts and says so, and upload URLs stop verifying on restart.

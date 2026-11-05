@@ -56,7 +56,7 @@ services:
       # upload URL stops verifying at the next restart.
       CAMERI_ENCRYPTION_KEY: ${CAMERI_ENCRYPTION_KEY:?generate one}
       # Required before anyone can change a project's settings. Reading is
-      # open; connecting a GitLab account is not.
+      # open; connecting a GitLab or GitHub account is not.
       CAMERI_ADMIN_TOKEN: ${CAMERI_ADMIN_TOKEN:?generate one}
     volumes:
       # Attachment bytes on the default storage driver. Losing this volume
@@ -257,9 +257,17 @@ cross-origin and uncredentialed, and every read path in cameri is open anyway
 
 ## Merge request comments
 
-A project can be pointed at a GitLab instance from its settings page, after
-which cameri posts one comment per merge request and rewrites it in place as
-the run progresses, rather than adding a note per push.
+A project can be pointed at a GitLab instance or at GitHub from its settings
+page, after which cameri posts one comment per merge request or pull request
+and rewrites it in place as the run progresses, rather than adding a note per
+push. A project can have both connected.
+
+On GitLab the build has to be a `merge_request_event` pipeline. On GitHub it
+has to run on `pull_request` (or `pull_request_target`), because that is the
+event whose payload names the pull request; a plain `push` build has none, and
+cameri comments on nothing rather than guessing. The GitHub token needs
+`Pull requests: Read and write` on the repository, and the API URL is
+`https://api.github.com`, or `https://HOST/api/v3` for GitHub Enterprise Server.
 
 The access token is encrypted with `CAMERI_ENCRYPTION_KEY` before it is stored,
 and never leaves the server again — the dashboard only ever sees a hint of it.
@@ -278,8 +286,8 @@ CAMERI_ADMIN_TOKEN=$(node -e \
 ```
 
 By default cameri will only connect an integration to a **public** address. A
-self-hosted GitLab is usually on the private network the server is sitting in,
-so name it explicitly and cameri will trust that host and no other:
+self-hosted GitLab or GitHub Enterprise Server is usually on the private network
+the server is sitting in, so name it explicitly and cameri will trust that host and no other:
 
 ```yaml
 CAMERI_INTEGRATION_HOSTS: gitlab.internal,gitlab.example.com

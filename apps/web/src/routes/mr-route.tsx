@@ -80,7 +80,7 @@ export function MergeRequestRoute() {
             <Button variant="outline" size="sm" className="ml-auto" asChild>
               <a href={detail.url} target="_blank" rel="noreferrer">
                 <ExternalLinkIcon className="size-4" />
-                Open in GitLab
+                Open in {detail.provider === "github" ? "GitHub" : "GitLab"}
               </a>
             </Button>
           ) : null}

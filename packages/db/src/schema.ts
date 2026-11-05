@@ -1,5 +1,6 @@
 import {
   ATTACHMENT_KINDS,
+  INTEGRATION_PROVIDERS,
   PLAN_STRATEGIES,
   RUN_STATUSES,
   SHARD_STATUSES,
@@ -27,7 +28,7 @@ export const runStatusEnum = pgEnum("run_status", [...RUN_STATUSES]);
 export const shardStatusEnum = pgEnum("shard_status", [...SHARD_STATUSES]);
 export const attachmentKindEnum = pgEnum("attachment_kind", [...ATTACHMENT_KINDS]);
 export const planStrategyEnum = pgEnum("plan_strategy", [...PLAN_STRATEGIES]);
-export const integrationProviderEnum = pgEnum("integration_provider", ["gitlab"]);
+export const integrationProviderEnum = pgEnum("integration_provider", [...INTEGRATION_PROVIDERS]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 

@@ -3,7 +3,7 @@ import { aggregateStats } from "@camerihq/core";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { AppContext } from "../context.ts";
 import { createCipher } from "../crypto.ts";
-import { GitLabClient } from "./gitlab.ts";
+import { createNoteClient, isIntegrationProvider, PROVIDER_LABELS } from "./note-client.ts";
 import { assertReachableIntegrationUrl, parseAllowedHosts } from "./url-guard.ts";
 
 /**
@@ -16,10 +16,10 @@ import { assertReachableIntegrationUrl, parseAllowedHosts } from "./url-guard.ts
  *
  * Three properties matter here, in order:
  *
- *  1. Ingest must never wait on GitLab. Every entry point is fire-and-forget.
+ *  1. Ingest must never wait on the provider. Every entry point is fire-and-forget.
  *  2. One comment per run, edited in place. A comment per batch would bury the
  *     merge request under a hundred notes.
- *  3. GitLab must not be hammered. Updates coalesce onto a minimum interval,
+ *  3. The provider must not be hammered. Updates coalesce onto a minimum interval,
  *     with the final state always delivered.
  */
 
@@ -136,7 +136,7 @@ export function createMrCommentSync(app: AppContext): MrCommentSync {
   };
 }
 
-/** One pass: read the run, render it, and write it to GitLab. */
+/** One pass: read the run, render it, and write it to the provider. */
 async function sync(app: AppContext, runId: string): Promise<void> {
   const { db, env } = app;
 
@@ -152,14 +152,13 @@ async function sync(app: AppContext, runId: string): Promise<void> {
 
   // Not a merge request pipeline. Nothing to comment on, and this is the common
   // case — most runs are branch or scheduled pipelines.
-  if (run.mrProvider !== "gitlab" || !run.mrProjectId || !run.mrIid) return;
+  const provider = run.mrProvider;
+  if (!isIntegrationProvider(provider) || !run.mrProjectId || !run.mrIid) return;
 
   const [integration] = await db
     .select()
     .from(integrations)
-    .where(
-      and(eq(integrations.projectId, run.projectId), eq(integrations.provider, "gitlab")),
-    )
+    .where(and(eq(integrations.projectId, run.projectId), eq(integrations.provider, provider)))
     .limit(1);
 
   if (!integration || !integration.enabled) return;
@@ -168,10 +167,12 @@ async function sync(app: AppContext, runId: string): Promise<void> {
   // `run.mrServerUrl`, which arrives in the ingest payload — so anyone holding
   // a record key could have named the host that the decrypted token below was
   // then presented to. A record key is a write credential for test results; it
-  // is not permission to be told the GitLab token.
+  // is not permission to be told the integration token.
   const { baseUrl } = integration;
   if (!baseUrl) {
-    throw new Error("no GitLab base URL — set one on the integration in project settings");
+    throw new Error(
+      `no ${PROVIDER_LABELS[provider]} URL — set one on the integration in project settings`,
+    );
   }
 
   // Re-checked at the point of use, not just when it was saved: the allowlist
@@ -179,7 +180,7 @@ async function sync(app: AppContext, runId: string): Promise<void> {
   await assertReachableIntegrationUrl(baseUrl, parseAllowedHosts(env.CAMERI_INTEGRATION_HOSTS));
 
   const token = createCipher(app.encryptionKey).decrypt(integration.tokenCipher);
-  const client = new GitLabClient({ baseUrl, token });
+  const client = createNoteClient(provider, { baseUrl, token });
 
   const body = await renderComment(app, {
     run,
@@ -226,7 +227,7 @@ interface RenderContext {
 /**
  * The comment body.
  *
- * Markdown, because that is what GitLab renders, and deliberately compact: this
+ * Markdown, because that is what GitLab and GitHub render, and deliberately compact: this
  * sits in a review thread where a reviewer is trying to read a diff, so it earns
  * its space by answering "can I merge this" and then getting out of the way.
  */
@@ -348,7 +349,7 @@ function oneLine(value: string): string {
  * test named `<img onerror=…>` from rendering as anything but its own name.
  */
 function escapeMd(value: string): string {
-  return value.replace(/[<>&`|*_[\]\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+  return value.replace(/[<>&`|*_@[\]\\]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 /**
@@ -361,17 +362,17 @@ function escapeMd(value: string): string {
 async function recordFailure(app: AppContext, runId: string, message: string): Promise<void> {
   try {
     const [row] = await app.db
-      .select({ projectId: runs.projectId })
+      .select({ projectId: runs.projectId, provider: runs.mrProvider })
       .from(runs)
       .where(eq(runs.id, runId))
       .limit(1);
-    if (!row) return;
+    if (!row || !isIntegrationProvider(row.provider)) return;
 
     await app.db
       .update(integrations)
       .set({ lastError: message })
       .where(
-        and(eq(integrations.projectId, row.projectId), eq(integrations.provider, "gitlab")),
+        and(eq(integrations.projectId, row.projectId), eq(integrations.provider, row.provider)),
       );
   } catch {
     // Best effort. If we cannot even record why the comment failed, the console

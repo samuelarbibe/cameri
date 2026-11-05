@@ -59,11 +59,11 @@ export type CiContext = z.infer<typeof ciContextSchema>;
  * shards are doing.
  */
 export const mergeRequestContextSchema = z.object({
-  /** `gitlab` today. Absent means "this build is not a merge request". */
+  /** `gitlab` or `github`. Absent means "this build is not a merge request". */
   provider: z.string().nullish(),
-  /** Numeric id or url-encoded path — whichever the provider's API accepts. */
+  /** GitLab project id or url-encoded path, or GitHub `owner/repo`. */
   projectId: z.string().nullish(),
-  /** GitLab's `iid`; the number humans see, scoped to the project. */
+  /** GitLab's `iid` or GitHub's pull request number; the number humans see, scoped to the project. */
   iid: z.string().nullish(),
   /**
    * The merge request's own title, as CI reported it.

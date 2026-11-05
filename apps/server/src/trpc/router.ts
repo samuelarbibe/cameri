@@ -1,4 +1,4 @@
-import { runStatusSchema, type RunStatus } from "@camerihq/contract";
+import { INTEGRATION_PROVIDERS, runStatusSchema, type RunStatus } from "@camerihq/contract";
 import { attachments, integrations, projects, runs, shards, testAttempts, tests } from "@camerihq/db";
 import { TRPCError } from "@trpc/server";
 import {
@@ -20,7 +20,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { AppContext } from "../context.ts";
 import { createCipher, tokenHint } from "../crypto.ts";
-import { GitLabClient } from "../integrations/gitlab.ts";
+import { createNoteClient, PROVIDER_LABELS } from "../integrations/note-client.ts";
 import {
   assertReachableIntegrationUrl,
   BlockedIntegrationUrlError,
@@ -599,7 +599,7 @@ export const appRouter = router({
       .input(
         z.object({
           projectSlug: z.string(),
-          provider: z.literal("gitlab"),
+          provider: z.enum(INTEGRATION_PROVIDERS),
           baseUrl: z.url(),
           token: z.string().min(8),
           enabled: z.boolean().default(true),
@@ -621,14 +621,17 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
         }
 
-        // Fail before storing, not after: a token that cannot reach GitLab is
+        // Fail before storing, not after: a token that cannot reach the provider is
         // worth rejecting at the point someone can still fix the typo.
         try {
-          await new GitLabClient({ baseUrl: input.baseUrl, token: input.token }).currentUser();
+          await createNoteClient(input.provider, {
+            baseUrl: input.baseUrl,
+            token: input.token,
+          }).currentUser();
         } catch (error) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `Could not authenticate against GitLab: ${describe(error)}`,
+            message: `Could not authenticate against ${PROVIDER_LABELS[input.provider]}: ${describe(error)}`,
           });
         }
 
@@ -656,7 +659,7 @@ export const appRouter = router({
       }),
 
     remove: adminProcedure
-      .input(z.object({ projectSlug: z.string(), provider: z.literal("gitlab") }))
+      .input(z.object({ projectSlug: z.string(), provider: z.enum(INTEGRATION_PROVIDERS) }))
       .mutation(async ({ ctx, input }) => {
         const project = await requireProject(ctx.app.db, input.projectSlug);
         await ctx.app.db
@@ -763,6 +766,7 @@ function mergeRequestQuery(
       /** The merge request's own branch — the source side, from the run's git context. */
       sourceBranch: latest<string | null>(runs.branch),
       url: latest<string | null>(runs.mrUrl),
+      provider: latest<string | null>(runs.mrProvider),
       lastRunId: latest<string>(runs.id),
       lastStatus: latest<RunStatus>(runs.status),
       lastRunAt: sql<string>`max(${runs.createdAt})`,

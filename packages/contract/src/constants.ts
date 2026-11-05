@@ -42,3 +42,6 @@ export const PLAN_STRATEGIES = [
   /** No usable history for this project yet, so the split is by count alone. */
   "even",
 ] as const;
+
+export const INTEGRATION_PROVIDERS = ["gitlab", "github"] as const;
+export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
