@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { RECORD_KEY_HEADER } from "@camerihq/contract/constants";
 import { recordKeys, type Database } from "@camerihq/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -9,6 +9,11 @@ import type { AppContext } from "./context.ts";
 export interface AuthedProject {
   projectId: string;
   recordKeyId: string;
+}
+
+/** A fresh plaintext record key. Store only its `hashRecordKey`. */
+export function generateRecordKey(): string {
+  return `cam_${randomBytes(24).toString("base64url")}`;
 }
 
 export function hashRecordKey(raw: string): string {

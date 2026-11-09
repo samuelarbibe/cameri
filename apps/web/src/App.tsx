@@ -1,7 +1,8 @@
 import { BrowserRouter, Route, Routes } from "react-router";
 import { MergeRequestRoute } from "@/routes/mr-route";
 import { MergeRequestsRoute } from "@/routes/mrs-route";
-import { ProjectRedirect } from "@/routes/project-redirect";
+import { NotFoundRoute } from "@/routes/not-found-route";
+import { ProjectsRoute } from "@/routes/projects-route";
 import { RunRoute } from "@/routes/run-route";
 import { RunsRoute } from "@/routes/runs-route";
 import { SettingsRoute } from "@/routes/settings-route";
@@ -19,12 +20,8 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Nothing at the root identifies a project, so it bounces to the
-            first one as soon as the list arrives. */}
-        <Route path="/" element={<ProjectRedirect />} />
+        <Route path="/" element={<ProjectsRoute />} />
 
-        {/* Layout route: the chrome renders once and survives navigation, so
-            switching between the run list and a run keeps the sidebar mounted. */}
         <Route path=":projectSlug" element={<ShellLayout />}>
           <Route index element={<RunsRoute />} />
           <Route path="runs" element={<RunsRoute />} />
@@ -36,6 +33,8 @@ export function App() {
           <Route path="tests" element={<TestsRoute />} />
           <Route path="settings" element={<SettingsRoute />} />
         </Route>
+
+        <Route path="*" element={<NotFoundRoute />} />
       </Routes>
     </BrowserRouter>
   );

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { AppShell, type Crumb } from "@/components/app-shell";
+import { NotFoundRoute } from "@/routes/not-found-route";
 import { trpc } from "@/trpc";
 
 /** Path segment → what the breadcrumb calls it. Mirrors the sidebar's views. */
@@ -41,6 +42,9 @@ export function ShellLayout() {
   });
 
   const project = projects.data?.find((candidate) => candidate.slug === projectSlug);
+
+  // Only once the list has arrived: while it loads, every slug is unknown.
+  if (projects.data && !project) return <NotFoundRoute projectSlug={projectSlug} />;
 
   return (
     <AppShell
