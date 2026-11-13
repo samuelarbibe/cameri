@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
@@ -29,6 +29,11 @@ export interface Storage {
    * the trace itself, so a relative URL resolves against the wrong host.
    */
   downloadUrl(key: string): Promise<string>;
+  /**
+   * Removes an attachment's bytes. A key with nothing stored under it — an
+   * upload that never arrived — is not an error.
+   */
+  delete(key: string): Promise<void>;
   /** Only implemented by the local driver; S3 clients read presigned GETs. */
   write?(key: string, body: Readable): Promise<void>;
   read?(key: string): Promise<Readable>;
@@ -100,6 +105,10 @@ export class LocalStorage implements Storage {
 
   async read(key: string): Promise<Readable> {
     return createReadStream(this.pathFor(key));
+  }
+
+  async delete(key: string): Promise<void> {
+    await rm(this.pathFor(key), { force: true });
   }
 
   /** Resolves a key under the root, refusing anything that escapes it. */

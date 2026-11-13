@@ -1,5 +1,14 @@
 import { INTEGRATION_PROVIDERS, runStatusSchema, type RunStatus } from "@camerihq/contract";
-import { attachments, integrations, projects, runs, shards, testAttempts, tests } from "@camerihq/db";
+import {
+  attachments,
+  integrations,
+  projects,
+  recordKeys,
+  runs,
+  shards,
+  testAttempts,
+  tests,
+} from "@camerihq/db";
 import { TRPCError } from "@trpc/server";
 import {
   and,
@@ -18,6 +27,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { generateRecordKey, hashRecordKey } from "../auth.ts";
 import type { AppContext } from "../context.ts";
 import { createCipher, tokenHint } from "../crypto.ts";
 import { createNoteClient, PROVIDER_LABELS } from "../integrations/note-client.ts";
@@ -26,6 +36,7 @@ import {
   BlockedIntegrationUrlError,
   parseAllowedHosts,
 } from "../integrations/url-guard.ts";
+import { slugify } from "../slug.ts";
 import { adminProcedure, isAdmin, publicProcedure, router } from "./trpc.ts";
 
 /**
@@ -63,6 +74,94 @@ export const appRouter = router({
     list: publicProcedure.query(({ ctx }) =>
       ctx.app.db.select().from(projects).orderBy(projects.name),
     ),
+
+    /**
+     * A project and its first record key, in one transaction so a project is
+     * never left without a way to report into it.
+     *
+     * Unlike `bootstrap`, a taken slug is refused rather than renamed: from the
+     * dashboard, quietly adopting someone else's project is the wrong surprise.
+     * The plaintext key is returned once — only its hash is stored.
+     */
+    create: adminProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(100) }))
+      .mutation(async ({ ctx, input }) => {
+        const slug = slugify(input.name);
+        if (!slug) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A project name needs at least one letter or digit.",
+          });
+        }
+
+        return ctx.app.db.transaction(async (tx) => {
+          const [project] = await tx
+            .insert(projects)
+            .values({ name: input.name, slug })
+            .onConflictDoNothing({ target: projects.slug })
+            .returning();
+
+          if (!project) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: `A project with the slug “${slug}” already exists.`,
+            });
+          }
+
+          const recordKey = generateRecordKey();
+          await tx.insert(recordKeys).values({
+            projectId: project.id,
+            name: "dashboard",
+            keyHash: hashRecordKey(recordKey),
+          });
+
+          return { project, recordKey };
+        });
+      }),
+
+    /**
+     * Everything under the project goes with it — keys, integrations, runs,
+     * attempts, attachment rows — by the schema's `onDelete: "cascade"`.
+     *
+     * The cascade only reaches rows, so the attachment *bytes* are removed by
+     * hand: their keys are collected first, while the rows that name them still
+     * exist, and the files go only once the delete has committed. That part is
+     * best effort — a file that will not delete is logged and left behind,
+     * never a reason to fail a project removal that has already happened.
+     */
+    remove: adminProcedure
+      .input(z.object({ projectSlug: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const { db, storage } = ctx.app;
+        const project = await requireProject(db, input.projectSlug);
+
+        const stored = await db
+          .select({ storageKey: attachments.storageKey })
+          .from(attachments)
+          .innerJoin(testAttempts, eq(testAttempts.id, attachments.attemptId))
+          .where(eq(testAttempts.projectId, project.id));
+
+        await db.delete(projects).where(eq(projects.id, project.id));
+
+        console.log(
+          `[cameri] project ${input.projectSlug} removed, deleting its ${stored.length} stored files`,
+        );
+        const failedKeys = await deleteStoredFiles(
+          storage,
+          stored.map((row) => row.storageKey),
+        );
+        if (failedKeys.length === 0) {
+          console.log(
+            `[cameri] finished deleting stored files of project ${input.projectSlug}: all ${stored.length} deleted`,
+          );
+        } else {
+          console.warn(
+            `[cameri] finished deleting stored files of project ${input.projectSlug}: ` +
+              `${failedKeys.length} of ${stored.length} left behind`,
+          );
+        }
+        return { ok: true };
+      }),
   }),
 
   runs: router({
@@ -697,6 +796,38 @@ async function requireProject(db: AppContext["db"], slug: string): Promise<{ id:
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** How many deletes are in flight at once, so a large project cannot exhaust file handles. */
+const STORAGE_DELETE_BATCH = 50;
+
+/**
+ * Removes attachment bytes, best effort, logging every file as it goes.
+ *
+ * A failed delete is logged and left behind, not thrown: callers run this
+ * after the rows naming the files are gone, when the worst a leftover file can
+ * do is take up space. Returns the keys that were left behind.
+ */
+async function deleteStoredFiles(
+  storage: AppContext["storage"],
+  keys: string[],
+): Promise<string[]> {
+  const failedKeys: string[] = [];
+  for (let i = 0; i < keys.length; i += STORAGE_DELETE_BATCH) {
+    const batch = keys.slice(i, i + STORAGE_DELETE_BATCH);
+    await Promise.all(
+      batch.map(async (key) => {
+        try {
+          await storage.delete(key);
+          console.log(`[cameri] deleted stored file ${key}`);
+        } catch (error) {
+          console.warn(`[cameri] could not delete stored file ${key}: ${describe(error)}`);
+          failedKeys.push(key);
+        }
+      }),
+    );
+  }
+  return failedKeys;
 }
 
 /**

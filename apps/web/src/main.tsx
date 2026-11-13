@@ -3,6 +3,7 @@ import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@/App.tsx";
+import { Toaster } from "@/components/ui/sonner";
 import "@/index.css";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,9 @@ createRoot(root).render(
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>
+      {/* At the root, not in the shell: the project list sits outside the
+          shell and reports errors too. Inside the theme provider for its colours. */}
+      <Toaster />
     </ThemeProvider>
   </StrictMode>,
 );
